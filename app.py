@@ -43,6 +43,23 @@ html, body, [class*="css"] { font-family: 'Space Grotesk', sans-serif; }
     font-size: 1.1rem; font-weight: 700; color: #e0e4f5;
     border-left: 3px solid #4f6ef7; padding-left: 12px; margin-bottom: 4px;
 }
+.predict-box {
+    background: linear-gradient(135deg, #1a1d2e 0%, #0f1220 100%);
+    border: 1px solid #4f6ef7; border-radius: 12px;
+    padding: 24px; margin-top: 16px;
+}
+.result-box {
+    background: linear-gradient(135deg, #0f2010 0%, #0d1a0f 100%);
+    border: 2px solid #34d399; border-radius: 12px;
+    padding: 24px; text-align: center; margin-top: 16px;
+}
+.result-value { font-family: 'JetBrains Mono', monospace; font-size: 2.5rem; font-weight: 700; color: #34d399; }
+.result-label { font-size: 0.9rem; color: #8891b0; margin-top: 8px; }
+.warning-box {
+    background: linear-gradient(135deg, #1f1500 0%, #150e00 100%);
+    border: 2px solid #f59e0b; border-radius: 12px;
+    padding: 24px; text-align: center; margin-top: 16px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -120,92 +137,99 @@ def generate_sample_data():
 
 # ── ML Training ───────────────────────────────────────────────────────────────
 @st.cache_data
-def run_regression_models(df):
+def train_all_models(df):
     drop_cols = [c for c in ['crash_date','injuries_non_incapacitating','injuries_fatal',
                               'injuries_incapacitating','injuries_reported_not_evident',
                               'injuries_no_indication'] if c in df.columns]
+
+    # ── Regression ────────────────────────────────────────────────────────────
     ml_df = df.drop(columns=drop_cols).copy()
-
-    # Encode categoricals
-    le = LabelEncoder()
+    le_dict = {}
     for col in ml_df.select_dtypes(include='object').columns:
+        le = LabelEncoder()
         ml_df[col] = le.fit_transform(ml_df[col].astype(str))
+        le_dict[col] = le
 
-    if 'injuries_total' not in ml_df.columns:
-        return None
+    reg_results = None
+    reg_models  = {}
+    reg_features = []
 
-    X = ml_df.drop(columns=['injuries_total'])
-    y = ml_df['injuries_total']
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    if 'injuries_total' in ml_df.columns:
+        X = ml_df.drop(columns=['injuries_total'])
+        y = ml_df['injuries_total']
+        reg_features = list(X.columns)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-    models = {
-        'Linear Regression':   LinearRegression(),
-        'Decision Tree':       DecisionTreeRegressor(random_state=42),
-        'Random Forest':       RandomForestRegressor(n_estimators=100, random_state=42),
-        'Gradient Boosting':   GradientBoostingRegressor(random_state=42),
-        'XGBoost':             XGBRegressor(random_state=42, verbosity=0),
-    }
+        regressors = {
+            'Linear Regression': LinearRegression(),
+            'Decision Tree':     DecisionTreeRegressor(random_state=42),
+            'Random Forest':     RandomForestRegressor(n_estimators=100, random_state=42),
+            'Gradient Boosting': GradientBoostingRegressor(random_state=42),
+            'XGBoost':           XGBRegressor(random_state=42, verbosity=0),
+        }
+        rows = []
+        for name, model in regressors.items():
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+            rows.append({'Model': name,
+                         'MAE':  round(mean_absolute_error(y_test, y_pred), 4),
+                         'RMSE': round(np.sqrt(mean_squared_error(y_test, y_pred)), 4),
+                         'R²':   round(r2_score(y_test, y_pred), 4)})
+            reg_models[name] = model
+        reg_results = pd.DataFrame(rows)
 
-    results = []
-    for name, model in models.items():
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
-        results.append({
-            'Model': name,
-            'MAE':   round(mean_absolute_error(y_test, y_pred), 4),
-            'RMSE':  round(np.sqrt(mean_squared_error(y_test, y_pred)), 4),
-            'R²':    round(r2_score(y_test, y_pred), 4),
-        })
+    # ── Classification ────────────────────────────────────────────────────────
+    clf_results  = None
+    clf_models   = {}
+    clf_features = []
+    cms          = {}
+    class_labels = []
 
-    return pd.DataFrame(results)
+    if 'crash_type' in df.columns:
+        df_maj = df[df['crash_type'] == df['crash_type'].value_counts().idxmax()]
+        df_min = df[df['crash_type'] == df['crash_type'].value_counts().idxmin()]
+        df_bal = pd.concat([
+            df_min,
+            resample(df_maj, replace=False, n_samples=len(df_min), random_state=42)
+        ]).sample(frac=1, random_state=42).reset_index(drop=True)
 
+        clf_df = df_bal.drop(columns=drop_cols, errors='ignore').copy()
+        for col in clf_df.select_dtypes(include='object').columns:
+            if col != 'crash_type':
+                le = LabelEncoder()
+                clf_df[col] = le.fit_transform(clf_df[col].astype(str))
+                le_dict[col] = le
 
-@st.cache_data
-def run_classification_models(df):
-    if 'crash_type' not in df.columns:
-        return None
+        le_target = LabelEncoder()
+        clf_df['crash_type'] = le_target.fit_transform(clf_df['crash_type'].astype(str))
+        class_labels = list(le_target.classes_)
+        le_dict['crash_type_target'] = le_target
 
-    # Balance classes
-    df_maj = df[df['crash_type'] == df['crash_type'].value_counts().idxmax()]
-    df_min = df[df['crash_type'] == df['crash_type'].value_counts().idxmin()]
-    df_maj_down = resample(df_maj, replace=False, n_samples=len(df_min), random_state=42)
-    df_bal = pd.concat([df_min, df_maj_down]).sample(frac=1, random_state=42).reset_index(drop=True)
+        X = clf_df.drop(columns=['crash_type'])
+        y = clf_df['crash_type']
+        clf_features = list(X.columns)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-    drop_cols = [c for c in ['crash_date','injuries_non_incapacitating','injuries_fatal',
-                              'injuries_incapacitating','injuries_reported_not_evident',
-                              'injuries_no_indication'] if c in df_bal.columns]
-    ml_df = df_bal.drop(columns=drop_cols).copy()
+        classifiers = {
+            'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42),
+            'Decision Tree':       DecisionTreeClassifier(random_state=42),
+            'Random Forest':       RandomForestClassifier(n_estimators=100, random_state=42),
+            'Gradient Boosting':   GradientBoostingClassifier(random_state=42),
+            'XGBoost':             XGBClassifier(random_state=42, verbosity=0),
+        }
+        rows = []
+        for name, model in classifiers.items():
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+            rows.append({'Model':    name,
+                         'Accuracy': round(accuracy_score(y_test, y_pred), 4),
+                         'F1-Score': round(float(classification_report(
+                             y_test, y_pred, output_dict=True)['weighted avg']['f1-score']), 4)})
+            clf_models[name] = model
+            cms[name] = confusion_matrix(y_test, y_pred)
+        clf_results = pd.DataFrame(rows)
 
-    le = LabelEncoder()
-    for col in ml_df.select_dtypes(include='object').columns:
-        ml_df[col] = le.fit_transform(ml_df[col].astype(str))
-
-    X = ml_df.drop(columns=['crash_type'])
-    y = ml_df['crash_type']
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-
-    models = {
-        'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42),
-        'Decision Tree':       DecisionTreeClassifier(random_state=42),
-        'Random Forest':       RandomForestClassifier(n_estimators=100, random_state=42),
-        'Gradient Boosting':   GradientBoostingClassifier(random_state=42),
-        'XGBoost':             XGBClassifier(random_state=42, verbosity=0, use_label_encoder=False),
-    }
-
-    results = []
-    cms = {}
-    for name, model in models.items():
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
-        results.append({
-            'Model':     name,
-            'Accuracy':  round(accuracy_score(y_test, y_pred), 4),
-            'F1-Score':  round(float(classification_report(y_test, y_pred,
-                               output_dict=True)['weighted avg']['f1-score']), 4),
-        })
-        cms[name] = confusion_matrix(y_test, y_pred)
-
-    return pd.DataFrame(results), cms, y_test, X_test
+    return reg_results, reg_models, reg_features, clf_results, clf_models, clf_features, cms, class_labels, le_dict
 
 
 THEME = dict(
@@ -280,7 +304,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 #  TABS
 # ══════════════════════════════════════════════════════════════════════════════
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Temporal Analysis","☁️ Conditions","⚠️ Causes & Severity","🔬 Model Insights"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Temporal Analysis","☁️ Conditions","⚠️ Causes & Severity","🔬 Predict & Models"])
 
 # ─── TAB 1 ────────────────────────────────────────────────────────────────────
 with tab1:
@@ -413,22 +437,205 @@ with tab3:
         fig.update_layout(**THEME, xaxis_title="Hour", yaxis_title="Avg Severity Score")
         st.plotly_chart(fig, use_container_width=True)
 
-# ─── TAB 4 : LIVE ML MODELS ───────────────────────────────────────────────────
+# ─── TAB 4 : PREDICT & MODELS ─────────────────────────────────────────────────
 with tab4:
-    st.markdown("### 🤖 Live ML Model Training & Evaluation")
-    st.info("Models train on your uploaded data. This may take 1–2 minutes on large datasets.")
+    st.markdown("### 🔬 Predict & Model Insights")
 
-    if st.button("🚀 Train All Models", type="primary"):
+    # ── Train models ──────────────────────────────────────────────────────────
+    with st.spinner("⚙️ Training models on your data... please wait"):
+        (reg_results, reg_models, reg_features,
+         clf_results, clf_models, clf_features,
+         cms, class_labels, le_dict) = train_all_models(df)
 
-        # ── Regression ────────────────────────────────────────────────────────
-        st.markdown("---")
-        st.markdown("#### 📈 Regression — Predicting `injuries_total`")
-        with st.spinner("Training regression models..."):
-            reg_results = run_regression_models(df)
+    st.success("✅ Models trained and ready!")
+    st.markdown("---")
 
+    # ══════════════════════════════════════════════════════════════════════════
+    #  SECTION 1 — USER INPUT PREDICTION
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("## 🎯 Make a Prediction")
+    st.markdown("Fill in the accident details below and get an instant prediction.")
+
+    with st.container():
+        st.markdown('<div class="predict-box">', unsafe_allow_html=True)
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown("**⏰ Time & Day**")
+            inp_hour = st.selectbox("Hour of Day", list(range(24)),
+                                    format_func=lambda x: f"{x:02d}:00")
+            inp_day  = st.selectbox("Day of Week",
+                                    [0,1,2,3,4,5,6],
+                                    format_func=lambda x: ['Monday','Tuesday','Wednesday',
+                                                            'Thursday','Friday','Saturday','Sunday'][x])
+            inp_month = st.selectbox("Month", ['January','February','March','April','May','June',
+                                               'July','August','September','October','November','December'])
+
+        with col2:
+            st.markdown("**🌤️ Conditions**")
+            inp_weather = st.selectbox("Weather Condition",
+                                       ['CLEAR','RAIN','SNOW','CLOUDY','FOG/SMOKE/HAZE',
+                                        'BLOWING SNOW','STORM','FREEZING RAIN/DRIZZLE'])
+            inp_road = st.selectbox("Road Surface",
+                                    ['DRY','WET','SNOW OR SLUSH','ICE',
+                                     'SAND MUD DIRT','OTHER'])
+            inp_lighting = st.selectbox("Lighting Condition",
+                                        ['DAYLIGHT','DARKNESS, LIGHTED ROAD',
+                                         'DARKNESS','DAWN','DUSK']) if 'lighting_condition' in df.columns else None
+
+        with col3:
+            st.markdown("**🚗 Crash Details**")
+            inp_cause = st.selectbox("Primary Cause",
+                                     ['FAILING TO YIELD RIGHT-OF-WAY','FOLLOWING TOO CLOSELY',
+                                      'IMPROPER OVERTAKING','FAILING TO REDUCE SPEED',
+                                      'DISREGARDING TRAFFIC SIGNALS',
+                                      'DISTRACTION - FROM INSIDE VEHICLE',
+                                      'IMPROPER TURNING/NO SIGNAL','WEATHER',
+                                      'ROAD ENGINEERING/SURFACE/MARKING DEFECTS',
+                                      'UNABLE TO DETERMINE'])
+            inp_model_reg = st.selectbox("Regression Model", list(reg_models.keys()) if reg_models else ['N/A'])
+            inp_model_clf = st.selectbox("Classifier Model", list(clf_models.keys()) if clf_models else ['N/A'])
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Derived features ──────────────────────────────────────────────────────
+    is_weekend   = 1 if inp_day >= 5 else 0
+    is_night     = 1 if inp_hour >= 20 or inp_hour <= 5 else 0
+    is_rush_hour = 1 if (7 <= inp_hour <= 9) or (16 <= inp_hour <= 19) else 0
+    weather_risk = 1 if inp_weather in ['RAIN','SNOW','FOG/SMOKE/HAZE','STORM','FREEZING RAIN/DRIZZLE','BLOWING SNOW'] else 0
+    road_risk    = 1 if inp_road in ['WET','SNOW OR SLUSH','ICE'] else 0
+
+    # ── Predict button ────────────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    predict_clicked = st.button("⚡ Predict Now", type="primary", use_container_width=True)
+
+    if predict_clicked:
+        # Build input dict with all possible features
+        raw_input = {
+            'crash_hour':            inp_hour,
+            'crash_day_of_week':     inp_day,
+            'crash_month':           inp_month,
+            'weather_condition':     inp_weather,
+            'roadway_surface_cond':  inp_road,
+            'prim_contributory_cause': inp_cause,
+            'is_weekend':            is_weekend,
+            'is_night':              is_night,
+            'is_rush_hour':          is_rush_hour,
+            'weather_risk':          weather_risk,
+            'road_risk':             road_risk,
+            'severity_score':        0,
+            'cause_freq':            df['prim_contributory_cause'].value_counts().get(inp_cause, 1)
+                                     if 'prim_contributory_cause' in df.columns else 1,
+        }
+
+        r1, r2 = st.columns(2)
+
+        # ── Regression prediction ──────────────────────────────────────────
+        with r1:
+            st.markdown("### 🩹 Predicted Injuries")
+            if reg_models and inp_model_reg in reg_models:
+                try:
+                    model = reg_models[inp_model_reg]
+                    row = {}
+                    for feat in reg_features:
+                        if feat in raw_input:
+                            val = raw_input[feat]
+                            if feat in le_dict and isinstance(val, str):
+                                try:
+                                    val = le_dict[feat].transform([val])[0]
+                                except:
+                                    val = 0
+                            row[feat] = val
+                        else:
+                            row[feat] = 0
+                    X_pred = pd.DataFrame([row])[reg_features]
+                    pred_injuries = max(0, round(float(model.predict(X_pred)[0]), 2))
+
+                    color = "#34d399" if pred_injuries < 1 else "#f59e0b" if pred_injuries < 3 else "#ef4444"
+                    emoji = "✅" if pred_injuries < 1 else "⚠️" if pred_injuries < 3 else "🚨"
+
+                    st.markdown(f"""
+                    <div class="result-box" style="border-color:{color}">
+                        <div style="font-size:3rem">{emoji}</div>
+                        <div class="result-value" style="color:{color}">{pred_injuries}</div>
+                        <div class="result-label">Predicted total injuries</div>
+                        <div style="color:#8891b0; font-size:0.8rem; margin-top:8px">
+                            Model: {inp_model_reg}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Prediction error: {e}")
+
+        # ── Classification prediction ──────────────────────────────────────
+        with r2:
+            st.markdown("### 🚗 Predicted Crash Type")
+            if clf_models and inp_model_clf in clf_models:
+                try:
+                    model = clf_models[inp_model_clf]
+                    row = {}
+                    for feat in clf_features:
+                        if feat in raw_input:
+                            val = raw_input[feat]
+                            if feat in le_dict and isinstance(val, str):
+                                try:
+                                    val = le_dict[feat].transform([val])[0]
+                                except:
+                                    val = 0
+                            row[feat] = val
+                        else:
+                            row[feat] = 0
+                    X_pred = pd.DataFrame([row])[clf_features]
+                    pred_class_idx = model.predict(X_pred)[0]
+                    pred_label = class_labels[pred_class_idx] if class_labels else str(pred_class_idx)
+
+                    is_injury = 'INJURY' in pred_label.upper() or 'TOW' in pred_label.upper()
+                    color = "#ef4444" if is_injury else "#34d399"
+                    emoji = "🚨" if is_injury else "✅"
+
+                    st.markdown(f"""
+                    <div class="result-box" style="border-color:{color}">
+                        <div style="font-size:3rem">{emoji}</div>
+                        <div class="result-value" style="color:{color}; font-size:1.3rem">
+                            {pred_label}
+                        </div>
+                        <div class="result-label">Predicted crash outcome</div>
+                        <div style="color:#8891b0; font-size:0.8rem; margin-top:8px">
+                            Model: {inp_model_clf}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Prediction error: {e}")
+
+        # ── Risk summary ───────────────────────────────────────────────────
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("### 📋 Risk Summary")
+        flags = []
+        if is_night:      flags.append("🌙 Night-time driving")
+        if is_rush_hour:  flags.append("🚗 Rush hour traffic")
+        if is_weekend:    flags.append("📅 Weekend")
+        if weather_risk:  flags.append(f"⛈️ Risky weather: {inp_weather}")
+        if road_risk:     flags.append(f"🛣️ Hazardous road: {inp_road}")
+
+        if flags:
+            st.warning("**Risk factors detected:**\n\n" + "\n\n".join(f"- {f}" for f in flags))
+        else:
+            st.success("✅ No major risk factors detected for this scenario.")
+
+    st.markdown("---")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  SECTION 2 — MODEL PERFORMANCE
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("## 📊 Model Performance")
+
+    m1, m2 = st.tabs(["📈 Regression Results", "🎯 Classification Results"])
+
+    with m1:
         if reg_results is not None:
             st.dataframe(reg_results, use_container_width=True, hide_index=True)
-
             fig = go.Figure([
                 go.Bar(name='R²',  x=reg_results['Model'], y=reg_results['R²'],  marker_color=PALETTE[0]),
                 go.Bar(name='MAE', x=reg_results['Model'], y=reg_results['MAE'], marker_color=PALETTE[2]),
@@ -436,22 +643,14 @@ with tab4:
             ])
             fig.update_layout(**THEME, barmode='group', title="Regression Model Comparison")
             st.plotly_chart(fig, use_container_width=True)
-
-            best_reg = reg_results.loc[reg_results['R²'].idxmax(), 'Model']
-            st.success(f"✅ Best Regression Model: **{best_reg}** (highest R²)")
+            best = reg_results.loc[reg_results['R²'].idxmax(), 'Model']
+            st.success(f"🏆 Best Regression Model: **{best}**")
         else:
-            st.warning("Column `injuries_total` not found in dataset.")
+            st.warning("No regression results — `injuries_total` column not found.")
 
-        # ── Classification ────────────────────────────────────────────────────
-        st.markdown("---")
-        st.markdown("#### 🎯 Classification — Predicting `crash_type`")
-        with st.spinner("Training classification models..."):
-            clf_output = run_classification_models(df)
-
-        if clf_output is not None:
-            clf_results, cms, y_test, X_test = clf_output
+    with m2:
+        if clf_results is not None:
             st.dataframe(clf_results, use_container_width=True, hide_index=True)
-
             fig2 = go.Figure([
                 go.Bar(name='Accuracy', x=clf_results['Model'], y=clf_results['Accuracy'], marker_color=PALETTE[0]),
                 go.Bar(name='F1-Score', x=clf_results['Model'], y=clf_results['F1-Score'], marker_color=PALETTE[1]),
@@ -460,31 +659,17 @@ with tab4:
             st.plotly_chart(fig2, use_container_width=True)
 
             best_clf = clf_results.loc[clf_results['Accuracy'].idxmax(), 'Model']
-            st.success(f"✅ Best Classifier: **{best_clf}** (highest Accuracy)")
+            st.success(f"🏆 Best Classifier: **{best_clf}**")
 
-            # Confusion matrix for best model
             st.markdown(f"#### Confusion Matrix — {best_clf}")
             cm = cms[best_clf]
-            fig3 = px.imshow(cm, text_auto=True,
-                             color_continuous_scale='Blues',
+            fig3 = px.imshow(cm, text_auto=True, color_continuous_scale='Blues',
                              labels=dict(x="Predicted", y="Actual"),
-                             x=['Drive Away','Tow/Injury'],
-                             y=['Drive Away','Tow/Injury'])
+                             x=class_labels, y=class_labels)
             fig3.update_layout(**THEME)
             st.plotly_chart(fig3, use_container_width=True)
         else:
-            st.warning("Column `crash_type` not found in dataset.")
-
-    else:
-        st.markdown("Click **Train All Models** above to run live training on your dataset.")
-        # Show placeholder table
-        st.markdown("#### Sample expected results:")
-        sample = pd.DataFrame({
-            'Model':  ['Linear Regression','Decision Tree','Random Forest','Gradient Boosting','XGBoost'],
-            'MAE':    ['~0.31', '~0.20', '~0.15', '~0.14', '~0.13'],
-            'R²':     ['~0.31', '~0.58', '~0.71', '~0.73', '~0.75'],
-        })
-        st.dataframe(sample, use_container_width=True, hide_index=True)
+            st.warning("No classification results — `crash_type` column not found.")
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.markdown("---")
