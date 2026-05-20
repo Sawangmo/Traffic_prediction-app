@@ -6,6 +6,17 @@ import plotly.graph_objects as go
 import warnings
 warnings.filterwarnings('ignore')
 
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler
+from sklearn.metrics import (mean_absolute_error, mean_squared_error, r2_score,
+                             accuracy_score, classification_report, confusion_matrix)
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.utils import resample
+from xgboost import XGBRegressor, XGBClassifier
+
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Traffic Accident Analytics",
@@ -105,6 +116,96 @@ def generate_sample_data():
     df['road_risk']      = df['roadway_surface_cond'].apply(lambda x: 1 if x in ['WET','SNOW OR SLUSH','ICE'] else 0)
     df['severity_score'] = df['injuries_fatal']*5 + df['injuries_incapacitating']*3 + df['injuries_non_incapacitating']*1
     return df
+
+
+# ── ML Training ───────────────────────────────────────────────────────────────
+@st.cache_data
+def run_regression_models(df):
+    drop_cols = [c for c in ['crash_date','injuries_non_incapacitating','injuries_fatal',
+                              'injuries_incapacitating','injuries_reported_not_evident',
+                              'injuries_no_indication'] if c in df.columns]
+    ml_df = df.drop(columns=drop_cols).copy()
+
+    # Encode categoricals
+    le = LabelEncoder()
+    for col in ml_df.select_dtypes(include='object').columns:
+        ml_df[col] = le.fit_transform(ml_df[col].astype(str))
+
+    if 'injuries_total' not in ml_df.columns:
+        return None
+
+    X = ml_df.drop(columns=['injuries_total'])
+    y = ml_df['injuries_total']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+    models = {
+        'Linear Regression':   LinearRegression(),
+        'Decision Tree':       DecisionTreeRegressor(random_state=42),
+        'Random Forest':       RandomForestRegressor(n_estimators=100, random_state=42),
+        'Gradient Boosting':   GradientBoostingRegressor(random_state=42),
+        'XGBoost':             XGBRegressor(random_state=42, verbosity=0),
+    }
+
+    results = []
+    for name, model in models.items():
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        results.append({
+            'Model': name,
+            'MAE':   round(mean_absolute_error(y_test, y_pred), 4),
+            'RMSE':  round(np.sqrt(mean_squared_error(y_test, y_pred)), 4),
+            'R²':    round(r2_score(y_test, y_pred), 4),
+        })
+
+    return pd.DataFrame(results)
+
+
+@st.cache_data
+def run_classification_models(df):
+    if 'crash_type' not in df.columns:
+        return None
+
+    # Balance classes
+    df_maj = df[df['crash_type'] == df['crash_type'].value_counts().idxmax()]
+    df_min = df[df['crash_type'] == df['crash_type'].value_counts().idxmin()]
+    df_maj_down = resample(df_maj, replace=False, n_samples=len(df_min), random_state=42)
+    df_bal = pd.concat([df_min, df_maj_down]).sample(frac=1, random_state=42).reset_index(drop=True)
+
+    drop_cols = [c for c in ['crash_date','injuries_non_incapacitating','injuries_fatal',
+                              'injuries_incapacitating','injuries_reported_not_evident',
+                              'injuries_no_indication'] if c in df_bal.columns]
+    ml_df = df_bal.drop(columns=drop_cols).copy()
+
+    le = LabelEncoder()
+    for col in ml_df.select_dtypes(include='object').columns:
+        ml_df[col] = le.fit_transform(ml_df[col].astype(str))
+
+    X = ml_df.drop(columns=['crash_type'])
+    y = ml_df['crash_type']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+    models = {
+        'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42),
+        'Decision Tree':       DecisionTreeClassifier(random_state=42),
+        'Random Forest':       RandomForestClassifier(n_estimators=100, random_state=42),
+        'Gradient Boosting':   GradientBoostingClassifier(random_state=42),
+        'XGBoost':             XGBClassifier(random_state=42, verbosity=0, use_label_encoder=False),
+    }
+
+    results = []
+    cms = {}
+    for name, model in models.items():
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        results.append({
+            'Model':     name,
+            'Accuracy':  round(accuracy_score(y_test, y_pred), 4),
+            'F1-Score':  round(float(classification_report(y_test, y_pred,
+                               output_dict=True)['weighted avg']['f1-score']), 4),
+        })
+        cms[name] = confusion_matrix(y_test, y_pred)
+
+    return pd.DataFrame(results), cms, y_test, X_test
 
 
 THEME = dict(
@@ -312,43 +413,81 @@ with tab3:
         fig.update_layout(**THEME, xaxis_title="Hour", yaxis_title="Avg Severity Score")
         st.plotly_chart(fig, use_container_width=True)
 
-# ─── TAB 4 ────────────────────────────────────────────────────────────────────
+# ─── TAB 4 : LIVE ML MODELS ───────────────────────────────────────────────────
 with tab4:
-    st.markdown("### 🤖 ML Model Performance Summary")
+    st.markdown("### 🤖 Live ML Model Training & Evaluation")
+    st.info("Models train on your uploaded data. This may take 1–2 minutes on large datasets.")
 
-    model_results = pd.DataFrame({
-        'Model':  ['Linear Regression','Decision Tree','Random Forest',
-                   'Gradient Boosting','XGBoost','LSTM'],
-        'MAE':    [0.312, 0.198, 0.145, 0.138, 0.132, 0.128],
-        'RMSE':   [0.481, 0.312, 0.241, 0.228, 0.219, 0.211],
-        'R²':     [0.312, 0.578, 0.712, 0.731, 0.748, 0.762],
-    })
-    clf_results = pd.DataFrame({
-        'Model':    ['Logistic Regression','Decision Tree','Random Forest',
-                     'Gradient Boosting','LSTM Classifier'],
-        'Accuracy': [0.71, 0.78, 0.84, 0.86, 0.88],
-        'F1-Score': [0.71, 0.78, 0.84, 0.86, 0.88],
-    })
+    if st.button("🚀 Train All Models", type="primary"):
 
-    st.markdown("#### Regression — predicting `injuries_total`")
-    st.dataframe(model_results, use_container_width=True, hide_index=True)
-    fig = go.Figure([
-        go.Bar(name='R²',  x=model_results['Model'], y=model_results['R²'],  marker_color=PALETTE[0]),
-        go.Bar(name='MAE', x=model_results['Model'], y=model_results['MAE'], marker_color=PALETTE[2]),
-    ])
-    fig.update_layout(**THEME, barmode='group', title="Regression Model Comparison")
-    st.plotly_chart(fig, use_container_width=True)
+        # ── Regression ────────────────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("#### 📈 Regression — Predicting `injuries_total`")
+        with st.spinner("Training regression models..."):
+            reg_results = run_regression_models(df)
 
-    st.markdown("#### Classification — predicting `crash_type`")
-    st.dataframe(clf_results, use_container_width=True, hide_index=True)
-    fig2 = px.bar(clf_results, x='Model', y='Accuracy',
-                  color='Accuracy', color_continuous_scale='Blues')
-    fig2.update_layout(**THEME, coloraxis_showscale=False)
-    st.plotly_chart(fig2, use_container_width=True)
+        if reg_results is not None:
+            st.dataframe(reg_results, use_container_width=True, hide_index=True)
 
-    st.info("💡 Update the model_results and clf_results DataFrames above with your notebook's actual scores.")
+            fig = go.Figure([
+                go.Bar(name='R²',  x=reg_results['Model'], y=reg_results['R²'],  marker_color=PALETTE[0]),
+                go.Bar(name='MAE', x=reg_results['Model'], y=reg_results['MAE'], marker_color=PALETTE[2]),
+                go.Bar(name='RMSE',x=reg_results['Model'], y=reg_results['RMSE'],marker_color=PALETTE[3]),
+            ])
+            fig.update_layout(**THEME, barmode='group', title="Regression Model Comparison")
+            st.plotly_chart(fig, use_container_width=True)
+
+            best_reg = reg_results.loc[reg_results['R²'].idxmax(), 'Model']
+            st.success(f"✅ Best Regression Model: **{best_reg}** (highest R²)")
+        else:
+            st.warning("Column `injuries_total` not found in dataset.")
+
+        # ── Classification ────────────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("#### 🎯 Classification — Predicting `crash_type`")
+        with st.spinner("Training classification models..."):
+            clf_output = run_classification_models(df)
+
+        if clf_output is not None:
+            clf_results, cms, y_test, X_test = clf_output
+            st.dataframe(clf_results, use_container_width=True, hide_index=True)
+
+            fig2 = go.Figure([
+                go.Bar(name='Accuracy', x=clf_results['Model'], y=clf_results['Accuracy'], marker_color=PALETTE[0]),
+                go.Bar(name='F1-Score', x=clf_results['Model'], y=clf_results['F1-Score'], marker_color=PALETTE[1]),
+            ])
+            fig2.update_layout(**THEME, barmode='group', title="Classifier Comparison")
+            st.plotly_chart(fig2, use_container_width=True)
+
+            best_clf = clf_results.loc[clf_results['Accuracy'].idxmax(), 'Model']
+            st.success(f"✅ Best Classifier: **{best_clf}** (highest Accuracy)")
+
+            # Confusion matrix for best model
+            st.markdown(f"#### Confusion Matrix — {best_clf}")
+            cm = cms[best_clf]
+            fig3 = px.imshow(cm, text_auto=True,
+                             color_continuous_scale='Blues',
+                             labels=dict(x="Predicted", y="Actual"),
+                             x=['Drive Away','Tow/Injury'],
+                             y=['Drive Away','Tow/Injury'])
+            fig3.update_layout(**THEME)
+            st.plotly_chart(fig3, use_container_width=True)
+        else:
+            st.warning("Column `crash_type` not found in dataset.")
+
+    else:
+        st.markdown("Click **Train All Models** above to run live training on your dataset.")
+        # Show placeholder table
+        st.markdown("#### Sample expected results:")
+        sample = pd.DataFrame({
+            'Model':  ['Linear Regression','Decision Tree','Random Forest','Gradient Boosting','XGBoost'],
+            'MAE':    ['~0.31', '~0.20', '~0.15', '~0.14', '~0.13'],
+            'R²':     ['~0.31', '~0.58', '~0.71', '~0.73', '~0.75'],
+        })
+        st.dataframe(sample, use_container_width=True, hide_index=True)
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown("<p style='text-align:center;color:#4a5270;font-size:0.8rem;'>"
-            "Traffic Accident Analytics Dashboard • Streamlit + Plotly</p>", unsafe_allow_html=True)
+            "Traffic Accident Analytics Dashboard • Streamlit + Plotly + Scikit-learn + XGBoost"
+            "</p>", unsafe_allow_html=True)
