@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import warnings
 warnings.filterwarnings('ignore')
 
-# ── Page config ──────────────────────────────────────────────────────────────
+# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Traffic Accident Analytics",
     page_icon="🚦",
@@ -164,11 +164,11 @@ st.markdown("---")
 
 k1, k2, k3, k4, k5 = st.columns(5)
 kpis = [
-    (f"{len(fdf):,}",                                                      "Total Accidents"),
+    (f"{len(fdf):,}", "Total Accidents"),
     (f"{int(fdf['injuries_fatal'].sum()) if 'injuries_fatal' in fdf.columns else 0:,}", "Fatal Injuries"),
     (f"{int(fdf['injuries_total'].sum()) if 'injuries_total' in fdf.columns else 0:,}", "Total Injuries"),
-    (f"{round(fdf['is_night'].mean()*100,1) if 'is_night' in fdf.columns else 0}%",    "Night-time Crashes"),
-    (f"{round(fdf['is_weekend'].mean()*100,1) if 'is_weekend' in fdf.columns else 0}%","Weekend Crashes"),
+    (f"{round(fdf['is_night'].mean()*100,1) if 'is_night' in fdf.columns else 0}%", "Night-time Crashes"),
+    (f"{round(fdf['is_weekend'].mean()*100,1) if 'is_weekend' in fdf.columns else 0}%", "Weekend Crashes"),
 ]
 for col, (val, label) in zip([k1,k2,k3,k4,k5], kpis):
     col.markdown(f'<div class="kpi-card"><div class="kpi-value">{val}</div>'
@@ -218,8 +218,11 @@ with tab1:
 
     if 'is_rush_hour' in fdf.columns:
         st.markdown('<div class="section-title">Rush Hour vs Off-Peak vs Night</div>', unsafe_allow_html=True)
-        rush = fdf['is_rush_hour'].sum(); night = fdf['is_night'].sum(); normal = len(fdf)-rush-night
-        fig = px.pie(values=[rush,night,normal], names=['Rush Hour','Night-time','Off-Peak'],
+        rush = fdf['is_rush_hour'].sum()
+        night = fdf['is_night'].sum()
+        normal = len(fdf) - rush - night
+        fig = px.pie(values=[rush, night, normal],
+                     names=['Rush Hour','Night-time','Off-Peak'],
                      color_discrete_sequence=PALETTE[:3], hole=0.55)
         fig.update_layout(**THEME)
         st.plotly_chart(fig, use_container_width=True)
@@ -234,7 +237,8 @@ with tab2:
             wc.columns = ['Weather','Count']
             fig = px.bar(wc, x='Count', y='Weather', orientation='h',
                          color='Count', color_continuous_scale='Viridis')
-            fig.update_layout(**THEME, coloraxis_showscale=False, yaxis={'categoryorder':'total ascending'})
+            fig.update_layout(**THEME, coloraxis_showscale=False)
+            fig.update_yaxes(categoryorder='total ascending')
             st.plotly_chart(fig, use_container_width=True)
 
     with c2:
@@ -244,7 +248,8 @@ with tab2:
             rc.columns = ['Surface','Count']
             fig = px.bar(rc, x='Count', y='Surface', orientation='h',
                          color='Count', color_continuous_scale='RdYlGn_r')
-            fig.update_layout(**THEME, coloraxis_showscale=False, yaxis={'categoryorder':'total ascending'})
+            fig.update_layout(**THEME, coloraxis_showscale=False)
+            fig.update_yaxes(categoryorder='total ascending')
             st.plotly_chart(fig, use_container_width=True)
 
     if 'crash_type' in fdf.columns:
@@ -274,8 +279,8 @@ with tab3:
         causes.columns = ['Cause','Count']
         fig = px.bar(causes, x='Count', y='Cause', orientation='h',
                      color='Count', color_continuous_scale='Reds')
-        fig.update_layout(**THEME, coloraxis_showscale=False,
-                          yaxis={'categoryorder':'total ascending'}, height=420)
+        fig.update_layout(**THEME, coloraxis_showscale=False, height=420)
+        fig.update_yaxes(categoryorder='total ascending')
         st.plotly_chart(fig, use_container_width=True)
 
     c1, c2 = st.columns(2)
@@ -311,7 +316,6 @@ with tab3:
 with tab4:
     st.markdown("### 🤖 ML Model Performance Summary")
 
-    # ⬇️  Replace these numbers with your notebook's actual printed results
     model_results = pd.DataFrame({
         'Model':  ['Linear Regression','Decision Tree','Random Forest',
                    'Gradient Boosting','XGBoost','LSTM'],
@@ -320,10 +324,10 @@ with tab4:
         'R²':     [0.312, 0.578, 0.712, 0.731, 0.748, 0.762],
     })
     clf_results = pd.DataFrame({
-        'Model':     ['Logistic Regression','Decision Tree','Random Forest',
-                      'Gradient Boosting','LSTM Classifier'],
-        'Accuracy':  [0.71, 0.78, 0.84, 0.86, 0.88],
-        'F1-Score':  [0.71, 0.78, 0.84, 0.86, 0.88],
+        'Model':    ['Logistic Regression','Decision Tree','Random Forest',
+                     'Gradient Boosting','LSTM Classifier'],
+        'Accuracy': [0.71, 0.78, 0.84, 0.86, 0.88],
+        'F1-Score': [0.71, 0.78, 0.84, 0.86, 0.88],
     })
 
     st.markdown("#### Regression — predicting `injuries_total`")
@@ -342,7 +346,7 @@ with tab4:
     fig2.update_layout(**THEME, coloraxis_showscale=False)
     st.plotly_chart(fig2, use_container_width=True)
 
-    st.info("💡 Update the `model_results` and `clf_results` DataFrames above with your notebook's actual scores.")
+    st.info("💡 Update the model_results and clf_results DataFrames above with your notebook's actual scores.")
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.markdown("---")
