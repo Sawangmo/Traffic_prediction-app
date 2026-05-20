@@ -1,607 +1,350 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.preprocessing import LabelEncoder
+import plotly.express as px
+import plotly.graph_objects as go
+import warnings
+warnings.filterwarnings('ignore')
 
-st.set_page_config(page_title="Traffic Accident Predictor", page_icon="🚦", layout="wide")
-st.title("🚦 Traffic Accident Prediction & Analysis App")
+# ── Page config ──────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="Traffic Accident Analytics",
+    page_icon="🚦",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
+# ── Custom CSS ────────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+html, body, [class*="css"] { font-family: 'Space Grotesk', sans-serif; }
+.main { background: #0d0f1a; }
+[data-testid="stSidebar"] { background: #111320; border-right: 1px solid #1e2235; }
+.kpi-card {
+    background: linear-gradient(135deg, #1a1d2e 0%, #0f1220 100%);
+    border: 1px solid #2a2e45; border-radius: 12px;
+    padding: 20px 24px; text-align: center;
+}
+.kpi-value { font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 600; color: #4f6ef7; }
+.kpi-label { font-size: 0.78rem; color: #8891b0; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 4px; }
+.section-title {
+    font-size: 1.1rem; font-weight: 700; color: #e0e4f5;
+    border-left: 3px solid #4f6ef7; padding-left: 12px; margin-bottom: 4px;
+}
+</style>
+""", unsafe_allow_html=True)
 
-if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-
-    # ── EDA SECTION ──────────────────────────────────────────
-    st.header("📊 Exploratory Data Analysis")
-
-    st.subheader("1. Data Preview")
-    st.dataframe(df.head(10))
-
-    st.subheader("2. Dataset Info")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Rows", df.shape[0])
-    col2.metric("Columns", df.shape[1])
-    col3.metric("Missing Values", int(df.isnull().sum().sum()))
-
-    st.write("**Data Types:**")
-    st.dataframe(df.dtypes.rename("dtype").reset_index().rename(columns={"index": "Column"}))
-
-    st.subheader("3. Statistical Summary")
-    st.dataframe(df.describe())
-
-    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-
-    if df.isnull().sum().sum() > 0:
-        st.subheader("4. Missing Values Heatmap")
-        fig, ax = plt.subplots(figsize=(10, 4))
-        sns.heatmap(df.isnull(), cbar=False, cmap="viridis", ax=ax)
-        st.pyplot(fig)
-        plt.close()
-
-    if numeric_cols:
-        st.subheader("5. Feature Distributions")
-        selected_col = st.selectbox("Select a column to plot", numeric_cols)
-        fig, ax = plt.subplots(figsize=(8, 4))
-        sns.histplot(df[selected_col], kde=True, ax=ax, color="steelblue")
-        ax.set_title(f"Distribution of {selected_col}")
-        st.pyplot(fig)
-        plt.close()
-
-        st.subheader("6. Correlation Heatmap")
-        fig, ax = plt.subplots(figsize=(10, 6))
-        sns.heatmap(df[numeric_cols].corr(), annot=True, fmt=".2f", cmap="coolwarm", ax=ax)
-        st.pyplot(fig)
-        plt.close()
-
-        st.subheader("7. Boxplot (Outlier Detection)")
-        box_col = st.selectbox("Select a column for boxplot", numeric_cols, key="box")
-        fig, ax = plt.subplots(figsize=(8, 4))
-        sns.boxplot(x=df[box_col], color="salmon", ax=ax)
-        ax.set_title(f"Boxplot of {box_col}")
-        st.pyplot(fig)
-        plt.close()
-
-    # ── PAST ACCIDENTS SECTION ────────────────────────────────
-    st.header("📅 Past Accident Analysis")
-
-    date_cols = [c for c in df.columns if any(k in c.lower() for k in ["date", "year", "month", "time"])]
-    accident_count_cols = [c for c in df.columns if any(k in c.lower() for k in
-                           ["accident", "crash", "count", "incident", "total", "injur", "fatal"])]
-
-    date_col_options = date_cols if date_cols else list(df.columns)
-    count_col_options = accident_count_cols if accident_count_cols else numeric_cols
-
-    if count_col_options:
-        date_col = st.selectbox("Select date/time column", date_col_options, key="date_col")
-        count_col = st.selectbox("Select accident count column", count_col_options, key="count_col")
-
-        df_time = df[[date_col, count_col]].dropna().copy()
-        df_time[count_col] = pd.to_numeric(df_time[count_col], errors="coerce").fillna(0)
-        df_time[date_col] = pd.to_datetime(df_time[date_col], errors="coerce")
-        df_time = df_time.dropna(subset=[date_col]).sort_values(date_col)
-
-        if not df_time.empty:
-            df_time_grouped = df_time.groupby(date_col)[count_col].sum().reset_index()
-            df_time_grouped[count_col] = pd.to_numeric(df_time_grouped[count_col], errors="coerce").fillna(0)
-
-            st.subheader("📉 Accidents Over Time")
-            fig, ax = plt.subplots(figsize=(12, 5))
-            ax.plot(df_time_grouped[date_col], df_time_grouped[count_col], color="crimson", linewidth=2)
-            ax.fill_between(df_time_grouped[date_col], df_time_grouped[count_col], alpha=0.2, color="crimson")
-            ax.set_title("Historical Accident Trend", fontsize=14)
-            ax.set_xlabel("Date")
-            ax.set_ylabel("Number of Accidents")
-            plt.xticks(rotation=45)
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
-
-            total = int(df_time_grouped[count_col].sum())
-            numeric_series = pd.to_numeric(df_time_grouped[count_col], errors="coerce").fillna(0)
-            peak_idx = numeric_series.idxmax()
-            peak_date = df_time_grouped.loc[peak_idx, date_col]
-            peak_val = int(numeric_series.loc[peak_idx])
-
-            col1, col2, col3 = st.columns(3)
-            col1.metric("📌 Total Accidents (Historical)", f"{total:,}")
-            col2.metric("📍 Peak Date", str(peak_date)[:10])
-            col3.metric("🔺 Peak Count", f"{peak_val:,}")
-        else:
-            st.warning("⚠️ Could not parse dates. Try a different date column.")
-
-    # ── AREA ANALYSIS SECTION ─────────────────────────────────
-    st.header("📍 Accident Area Analysis")
-
-    area_cols = [c for c in df.columns if any(k in c.lower() for k in
-                 ["area", "location", "district", "zone", "region", "city",
-                  "street", "road", "suburb", "place", "ward", "county", "state"])]
-    area_col_options = area_cols if area_cols else df.select_dtypes(include="object").columns.tolist()
-
-    area_col = None
-    if area_col_options:
-        area_col = st.selectbox("Select area/location column", area_col_options, key="area_col")
-        area_counts = df[area_col].value_counts().head(15)
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("🏙️ Top 15 Accident-Prone Areas")
-            fig, ax = plt.subplots(figsize=(9, 6))
-            area_counts.plot(kind="barh", ax=ax, color="firebrick", edgecolor="black")
-            ax.set_title("Areas with Most Accidents")
-            ax.set_xlabel("Number of Accidents")
-            ax.invert_yaxis()
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
-
-        with col2:
-            st.subheader("📊 Area Proportion")
-            fig, ax = plt.subplots(figsize=(6, 6))
-            area_counts.head(8).plot(kind="pie", ax=ax, autopct="%1.1f%%", startangle=90)
-            ax.set_ylabel("")
-            ax.set_title("Top 8 Areas by Accident Share")
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
-
-        st.subheader("📋 Area Summary Table")
-        area_df = area_counts.reset_index()
-        area_df.columns = [area_col, "Accident Count"]
-        area_df["Percentage"] = (area_df["Accident Count"] / area_df["Accident Count"].sum() * 100).round(2)
-        area_df["Risk Level"] = area_df["Percentage"].apply(
-            lambda x: "🔴 High" if x > 10 else ("🟡 Medium" if x > 5 else "🟢 Low")
-        )
-        st.dataframe(area_df)
-
-        top_area = area_counts.index[0]
-        top_area_count = int(area_counts.iloc[0])
-        st.error(f"🔴 **Accident Hotspot:** `{top_area}` with **{top_area_count:,}** recorded accidents")
+# ── Data loading ──────────────────────────────────────────────────────────────
+@st.cache_data
+def load_data(uploaded_file=None):
+    if uploaded_file is not None:
+        df = pd.read_csv(uploaded_file)
     else:
-        st.info("ℹ️ No area/location columns detected.")
+        return generate_sample_data()
 
-    # ── TIME ANALYSIS SECTION ─────────────────────────────────
-    st.header("⏰ Accident Time Analysis")
+    if 'crash_date' in df.columns:
+        df['crash_date'] = pd.to_datetime(df['crash_date'], errors='coerce')
+        df['crash_month'] = df['crash_date'].dt.month_name()
 
-    time_cols = [c for c in df.columns if any(k in c.lower() for k in
-                 ["time", "hour", "period", "shift", "day", "date", "month", "week"])]
-    time_col_options = time_cols if time_cols else list(df.columns)
+    if 'crash_day_of_week' in df.columns:
+        df['is_weekend'] = df['crash_day_of_week'].apply(lambda x: 1 if x >= 5 else 0)
 
-    time_col = None
-    if time_col_options:
-        time_col = st.selectbox("Select time column", time_col_options, key="time_col")
-        time_series = df[time_col].dropna().copy()
-        parsed_time = pd.to_datetime(time_series, errors="coerce")
-        has_time = parsed_time.notna().sum() > len(time_series) * 0.3
+    if 'crash_hour' in df.columns:
+        df['is_night']     = df['crash_hour'].apply(lambda x: 1 if x >= 20 or x <= 5 else 0)
+        df['is_rush_hour'] = df['crash_hour'].apply(lambda x: 1 if (7<=x<=9) or (16<=x<=19) else 0)
 
-        if has_time:
-            df["_hour"] = parsed_time.dt.hour
-            df["_day"] = parsed_time.dt.day_name()
-            df["_month"] = parsed_time.dt.month_name()
+    if 'weather_condition' in df.columns:
+        df['weather_risk'] = df['weather_condition'].apply(
+            lambda x: 1 if x in ['RAIN','SNOW','FOG','STORM'] else 0)
 
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("🕐 Accidents by Hour of Day")
-                hour_counts = df["_hour"].value_counts().sort_index()
-                fig, ax = plt.subplots(figsize=(9, 4))
-                ax.bar(hour_counts.index, hour_counts.values, color="steelblue", edgecolor="black")
-                ax.set_title("Accident Frequency by Hour")
-                ax.set_xlabel("Hour of Day (0-23)")
-                ax.set_ylabel("Number of Accidents")
-                ax.set_xticks(range(0, 24))
-                plt.tight_layout()
-                st.pyplot(fig)
-                plt.close()
-                peak_hour = int(hour_counts.idxmax())
-                st.warning(f"⚠️ **Peak Accident Hour:** {peak_hour}:00 - {peak_hour+1}:00")
+    if 'roadway_surface_cond' in df.columns:
+        df['road_risk'] = df['roadway_surface_cond'].apply(
+            lambda x: 1 if x in ['WET','SNOW OR SLUSH','ICE'] else 0)
 
-            with col2:
-                st.subheader("📅 Accidents by Day of Week")
-                day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-                day_counts = df["_day"].value_counts().reindex(day_order, fill_value=0)
-                fig, ax = plt.subplots(figsize=(9, 4))
-                day_counts.plot(kind="bar", ax=ax, color="coral", edgecolor="black")
-                ax.set_title("Accident Frequency by Day of Week")
-                plt.xticks(rotation=45, ha="right")
-                plt.tight_layout()
-                st.pyplot(fig)
-                plt.close()
-                peak_day = day_counts.idxmax()
-                st.warning(f"⚠️ **Most Dangerous Day:** {peak_day}")
+    present = {c: w for c, w in {'injuries_fatal':5,'injuries_incapacitating':3,
+                                   'injuries_non_incapacitating':1}.items() if c in df.columns}
+    if present:
+        df['severity_score'] = sum(df[c]*w for c,w in present.items())
 
-            st.subheader("📆 Accidents by Month")
-            month_order = ["January", "February", "March", "April", "May", "June",
-                           "July", "August", "September", "October", "November", "December"]
-            month_counts = df["_month"].value_counts().reindex(month_order, fill_value=0)
-            fig, ax = plt.subplots(figsize=(12, 4))
-            month_counts.plot(kind="bar", ax=ax, color="mediumpurple", edgecolor="black")
-            ax.set_title("Accident Frequency by Month")
-            plt.xticks(rotation=45, ha="right")
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
-            peak_month = month_counts.idxmax()
-            st.warning(f"⚠️ **Most Dangerous Month:** {peak_month}")
+    return df
 
-        else:
-            st.subheader("🕐 Accident Frequency by Time Period")
-            time_counts = time_series.value_counts().head(15)
-            fig, ax = plt.subplots(figsize=(10, 5))
-            time_counts.plot(kind="bar", ax=ax, color="steelblue", edgecolor="black")
-            ax.set_title(f"Accidents by {time_col}")
-            plt.xticks(rotation=45, ha="right")
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
-            st.warning(f"⚠️ **Peak Period:** {time_counts.index[0]} with {int(time_counts.iloc[0]):,} accidents")
 
-    # ── WEATHER ANALYSIS SECTION ──────────────────────────────
-    st.header("🌦️ Weather Condition Analysis")
+def generate_sample_data():
+    np.random.seed(42)
+    n = 5000
+    hours = np.random.choice(range(24), n, p=[
+        0.01,0.01,0.01,0.01,0.01,0.02,0.04,0.07,0.06,0.05,
+        0.05,0.05,0.05,0.05,0.05,0.05,0.06,0.07,0.06,0.05,
+        0.04,0.03,0.02,0.01])
+    df = pd.DataFrame({
+        'crash_hour': hours,
+        'crash_day_of_week': np.random.randint(0, 7, n),
+        'crash_month': np.random.choice(['January','February','March','April','May','June',
+                                         'July','August','September','October','November','December'], n),
+        'weather_condition': np.random.choice(['CLEAR','RAIN','SNOW','CLOUDY','FOG','STORM'], n,
+                                               p=[0.55,0.18,0.10,0.10,0.05,0.02]),
+        'roadway_surface_cond': np.random.choice(['DRY','WET','SNOW OR SLUSH','ICE','SAND MUD DIRT'], n,
+                                                  p=[0.60,0.22,0.10,0.05,0.03]),
+        'prim_contributory_cause': np.random.choice([
+            'FAILING TO YIELD RIGHT-OF-WAY','FOLLOWING TOO CLOSELY','IMPROPER OVERTAKING',
+            'FAILING TO REDUCE SPEED','DISREGARDING TRAFFIC SIGNALS',
+            'DISTRACTION - FROM INSIDE VEHICLE','IMPROPER TURNING/NO SIGNAL',
+            'WEATHER','ROAD ENGINEERING/SURFACE/MARKING DEFECTS','UNABLE TO DETERMINE'], n),
+        'crash_type': np.random.choice(
+            ['NO INJURY / DRIVE AWAY','INJURY AND / OR TOW DUE TO CRASH'], n, p=[0.52,0.48]),
+        'injuries_fatal':               np.random.poisson(0.02, n),
+        'injuries_incapacitating':      np.random.poisson(0.10, n),
+        'injuries_non_incapacitating':  np.random.poisson(0.30, n),
+        'injuries_total':               np.random.poisson(0.42, n),
+    })
+    df['is_weekend']     = df['crash_day_of_week'].apply(lambda x: 1 if x >= 5 else 0)
+    df['is_night']       = df['crash_hour'].apply(lambda x: 1 if x >= 20 or x <= 5 else 0)
+    df['is_rush_hour']   = df['crash_hour'].apply(lambda x: 1 if (7<=x<=9) or (16<=x<=19) else 0)
+    df['weather_risk']   = df['weather_condition'].apply(lambda x: 1 if x in ['RAIN','SNOW','FOG','STORM'] else 0)
+    df['road_risk']      = df['roadway_surface_cond'].apply(lambda x: 1 if x in ['WET','SNOW OR SLUSH','ICE'] else 0)
+    df['severity_score'] = df['injuries_fatal']*5 + df['injuries_incapacitating']*3 + df['injuries_non_incapacitating']*1
+    return df
 
-    weather_cols = [c for c in df.columns if any(k in c.lower() for k in
-                    ["weather", "condition", "climate", "rain", "fog",
-                     "visibility", "wind", "snow", "temperature", "humid"])]
-    weather_col_options = weather_cols if weather_cols else df.select_dtypes(include="object").columns.tolist()
 
-    weather_col = None
-    if weather_col_options:
-        weather_col = st.selectbox("Select weather column", weather_col_options, key="weather_col")
-        weather_counts = df[weather_col].value_counts().head(10)
+THEME = dict(
+    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+    font=dict(family='Space Grotesk', color='#8891b0'),
+    xaxis=dict(gridcolor='#1e2235', linecolor='#2a2e45'),
+    yaxis=dict(gridcolor='#1e2235', linecolor='#2a2e45'),
+    margin=dict(l=20, r=20, t=40, b=20),
+)
+PALETTE = ['#4f6ef7','#34d399','#f59e0b','#ef4444','#a78bfa','#06b6d4','#fb923c','#e879f9']
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("🌧️ Accidents by Weather Condition")
-            fig, ax = plt.subplots(figsize=(9, 5))
-            colors = plt.cm.Set2(np.linspace(0, 1, len(weather_counts)))
-            weather_counts.plot(kind="bar", ax=ax, color=colors, edgecolor="black")
-            ax.set_title("Accident Count by Weather Condition")
-            plt.xticks(rotation=45, ha="right")
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
+# ══════════════════════════════════════════════════════════════════════════════
+#  SIDEBAR
+# ══════════════════════════════════════════════════════════════════════════════
+with st.sidebar:
+    st.markdown("## 🚦 Traffic Accident\n### Analytics Dashboard")
+    st.markdown("---")
+    uploaded = st.file_uploader("Upload traffic_accidents.csv", type=["csv"])
+    df = load_data(uploaded)
+    st.markdown("---")
+    st.markdown("**FILTERS**")
+    hour_range = st.slider("Hour of Day", 0, 23, (0, 23))
 
-        with col2:
-            st.subheader("☁️ Weather Proportion")
-            fig, ax = plt.subplots(figsize=(6, 6))
-            weather_counts.plot(kind="pie", ax=ax, autopct="%1.1f%%", startangle=90,
-                                colors=plt.cm.Set2(np.linspace(0, 1, len(weather_counts))))
-            ax.set_ylabel("")
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
+    if 'weather_condition' in df.columns:
+        weather_opts = sorted(df['weather_condition'].dropna().unique().tolist())
+        sel_weather  = st.multiselect("Weather Condition", weather_opts, default=weather_opts[:5])
+    else:
+        sel_weather = []
 
-        st.subheader("📋 Weather Summary Table")
-        weather_df = weather_counts.reset_index()
-        weather_df.columns = [weather_col, "Accident Count"]
-        weather_df["Percentage"] = (weather_df["Accident Count"] / weather_df["Accident Count"].sum() * 100).round(2)
-        weather_df["Severity"] = weather_df["Percentage"].apply(
-            lambda x: "🔴 Critical" if x > 20 else ("🟡 Moderate" if x > 10 else "🟢 Minor")
-        )
-        st.dataframe(weather_df)
+    if 'crash_type' in df.columns:
+        crash_types    = sorted(df['crash_type'].dropna().unique().tolist())
+        sel_crash_type = st.multiselect("Crash Type", crash_types, default=crash_types)
+    else:
+        sel_crash_type = []
 
-        worst_weather = weather_counts.index[0]
-        worst_count = int(weather_counts.iloc[0])
-        st.error(f"🌩️ **Most Dangerous Weather:** `{worst_weather}` — involved in **{worst_count:,}** accidents")
+    st.markdown("---")
+    if uploaded:
+        st.success(f"✅ Loaded {len(df):,} records")
+    else:
+        st.info("📊 Using sample data\nUpload your CSV above to use real data.")
 
-        if area_col and area_col in df.columns:
-            st.subheader("🔗 Weather vs Area Heatmap")
-            top_areas = df[area_col].value_counts().head(8).index.tolist()
-            top_weathers = df[weather_col].value_counts().head(6).index.tolist()
-            df_filtered = df[df[area_col].isin(top_areas) & df[weather_col].isin(top_weathers)]
-            if not df_filtered.empty:
-                cross = pd.crosstab(df_filtered[area_col], df_filtered[weather_col])
-                fig, ax = plt.subplots(figsize=(12, 6))
-                sns.heatmap(cross, annot=True, fmt="d", cmap="YlOrRd", ax=ax)
-                ax.set_title("Accidents by Area and Weather Condition")
-                plt.tight_layout()
-                st.pyplot(fig)
-                plt.close()
+# ── Apply filters ─────────────────────────────────────────────────────────────
+fdf = df.copy()
+if 'crash_hour' in fdf.columns:
+    fdf = fdf[fdf['crash_hour'].between(*hour_range)]
+if sel_weather and 'weather_condition' in fdf.columns:
+    fdf = fdf[fdf['weather_condition'].isin(sel_weather)]
+if sel_crash_type and 'crash_type' in fdf.columns:
+    fdf = fdf[fdf['crash_type'].isin(sel_crash_type)]
 
-    # ── CAUSE ANALYSIS SECTION ────────────────────────────────
-    st.header("🔍 Accident Cause Analysis")
+# ══════════════════════════════════════════════════════════════════════════════
+#  HEADER + KPIs
+# ══════════════════════════════════════════════════════════════════════════════
+st.markdown("# 🚦 Traffic Accident Analytics")
+st.markdown(f"Showing **{len(fdf):,}** of **{len(df):,}** records after filters")
+st.markdown("---")
 
-    cause_cols = [c for c in df.columns if any(k in c.lower() for k in
-                  ["cause", "reason", "type", "light", "speed",
-                   "alcohol", "drug", "vehicle", "factor", "severity"])]
-    all_cat_cols = df.select_dtypes(include="object").columns.tolist()
-    cause_col_options = cause_cols if cause_cols else all_cat_cols
+k1, k2, k3, k4, k5 = st.columns(5)
+kpis = [
+    (f"{len(fdf):,}",                                                      "Total Accidents"),
+    (f"{int(fdf['injuries_fatal'].sum()) if 'injuries_fatal' in fdf.columns else 0:,}", "Fatal Injuries"),
+    (f"{int(fdf['injuries_total'].sum()) if 'injuries_total' in fdf.columns else 0:,}", "Total Injuries"),
+    (f"{round(fdf['is_night'].mean()*100,1) if 'is_night' in fdf.columns else 0}%",    "Night-time Crashes"),
+    (f"{round(fdf['is_weekend'].mean()*100,1) if 'is_weekend' in fdf.columns else 0}%","Weekend Crashes"),
+]
+for col, (val, label) in zip([k1,k2,k3,k4,k5], kpis):
+    col.markdown(f'<div class="kpi-card"><div class="kpi-value">{val}</div>'
+                 f'<div class="kpi-label">{label}</div></div>', unsafe_allow_html=True)
 
-    cause_col = None
-    if cause_col_options:
-        cause_col = st.selectbox("Select cause/factor column", cause_col_options)
-        cause_counts = df[cause_col].value_counts().head(10)
+st.markdown("<br>", unsafe_allow_html=True)
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader(f"Top Causes: {cause_col}")
-            fig, ax = plt.subplots(figsize=(8, 5))
-            cause_counts.plot(kind="bar", ax=ax, color="tomato", edgecolor="black")
-            ax.set_title(f"Top 10 Values in '{cause_col}'")
-            plt.xticks(rotation=45, ha="right")
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
+# ══════════════════════════════════════════════════════════════════════════════
+#  TABS
+# ══════════════════════════════════════════════════════════════════════════════
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Temporal Analysis","☁️ Conditions","⚠️ Causes & Severity","🔬 Model Insights"])
 
-        with col2:
-            st.subheader("Proportion Breakdown")
-            fig, ax = plt.subplots(figsize=(6, 6))
-            cause_counts.plot(kind="pie", ax=ax, autopct="%1.1f%%", startangle=90)
-            ax.set_ylabel("")
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
+# ─── TAB 1 ────────────────────────────────────────────────────────────────────
+with tab1:
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown('<div class="section-title">Accidents by Hour of Day</div>', unsafe_allow_html=True)
+        if 'crash_hour' in fdf.columns:
+            hc = fdf['crash_hour'].value_counts().sort_index().reset_index()
+            hc.columns = ['Hour','Count']
+            fig = px.area(hc, x='Hour', y='Count', color_discrete_sequence=[PALETTE[0]])
+            fig.update_traces(fill='tozeroy', fillcolor='rgba(79,110,247,0.15)', line_color=PALETTE[0])
+            fig.update_layout(**THEME)
+            st.plotly_chart(fig, use_container_width=True)
 
-        cause_df = cause_counts.reset_index()
-        cause_df.columns = [cause_col, "Count"]
-        cause_df["Percentage"] = (cause_df["Count"] / cause_df["Count"].sum() * 100).round(2)
-        st.dataframe(cause_df)
+    with c2:
+        st.markdown('<div class="section-title">Accidents by Day of Week</div>', unsafe_allow_html=True)
+        if 'crash_day_of_week' in fdf.columns:
+            day_map = {0:'Mon',1:'Tue',2:'Wed',3:'Thu',4:'Fri',5:'Sat',6:'Sun'}
+            dc = fdf['crash_day_of_week'].map(day_map).value_counts().reindex(
+                ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']).reset_index()
+            dc.columns = ['Day','Count']
+            colors = [PALETTE[3] if d in ['Sat','Sun'] else PALETTE[0] for d in dc['Day']]
+            fig = px.bar(dc, x='Day', y='Count', color='Day', color_discrete_sequence=colors)
+            fig.update_layout(**THEME, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
 
-        remaining = [c for c in cause_col_options if c != cause_col]
-        if remaining:
-            st.subheader("🔗 Multi-Factor Analysis")
-            cause_col2 = st.selectbox("Select second factor", remaining)
-            cross_tab = pd.crosstab(df[cause_col], df[cause_col2])
-            fig, ax = plt.subplots(figsize=(12, 6))
-            sns.heatmap(cross_tab, annot=True, fmt="d", cmap="YlOrRd", ax=ax)
-            ax.set_title(f"{cause_col} vs {cause_col2}")
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
+    st.markdown('<div class="section-title">Accidents by Month</div>', unsafe_allow_html=True)
+    if 'crash_month' in fdf.columns:
+        month_order = ['January','February','March','April','May','June',
+                       'July','August','September','October','November','December']
+        mc = fdf['crash_month'].value_counts().reindex(month_order).dropna().reset_index()
+        mc.columns = ['Month','Count']
+        fig = px.bar(mc, x='Month', y='Count', color='Count', color_continuous_scale='Blues')
+        fig.update_layout(**THEME, coloraxis_showscale=False)
+        st.plotly_chart(fig, use_container_width=True)
 
-    # ── RECOMMENDATIONS SECTION ───────────────────────────────
-    st.header("💡 Safety Recommendations")
+    if 'is_rush_hour' in fdf.columns:
+        st.markdown('<div class="section-title">Rush Hour vs Off-Peak vs Night</div>', unsafe_allow_html=True)
+        rush = fdf['is_rush_hour'].sum(); night = fdf['is_night'].sum(); normal = len(fdf)-rush-night
+        fig = px.pie(values=[rush,night,normal], names=['Rush Hour','Night-time','Off-Peak'],
+                     color_discrete_sequence=PALETTE[:3], hole=0.55)
+        fig.update_layout(**THEME)
+        st.plotly_chart(fig, use_container_width=True)
 
-    recommendations = []
+# ─── TAB 2 ────────────────────────────────────────────────────────────────────
+with tab2:
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown('<div class="section-title">Weather Conditions</div>', unsafe_allow_html=True)
+        if 'weather_condition' in fdf.columns:
+            wc = fdf['weather_condition'].value_counts().head(10).reset_index()
+            wc.columns = ['Weather','Count']
+            fig = px.bar(wc, x='Count', y='Weather', orientation='h',
+                         color='Count', color_continuous_scale='Viridis')
+            fig.update_layout(**THEME, coloraxis_showscale=False, yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig, use_container_width=True)
 
-    if area_col and area_col in df.columns:
-        top3_areas = df[area_col].value_counts().head(3).index.tolist()
-        recommendations.append({
-            "category": "📍 High-Risk Areas",
-            "finding": f"Top accident zones: **{', '.join(str(a) for a in top3_areas)}**",
-            "recommendation": (
-                "• Deploy additional traffic police and speed cameras in these zones\n"
-                "• Install more road signs, speed bumps, and guardrails\n"
-                "• Improve road lighting, especially at intersections\n"
-                "• Conduct regular road condition maintenance"
-            )
-        })
+    with c2:
+        st.markdown('<div class="section-title">Road Surface Conditions</div>', unsafe_allow_html=True)
+        if 'roadway_surface_cond' in fdf.columns:
+            rc = fdf['roadway_surface_cond'].value_counts().head(8).reset_index()
+            rc.columns = ['Surface','Count']
+            fig = px.bar(rc, x='Count', y='Surface', orientation='h',
+                         color='Count', color_continuous_scale='RdYlGn_r')
+            fig.update_layout(**THEME, coloraxis_showscale=False, yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig, use_container_width=True)
 
-    if "_hour" in df.columns:
-        peak_h = int(df["_hour"].value_counts().idxmax())
-        time_label = "Rush hour (morning)" if 6 <= peak_h <= 9 else \
-                     "Rush hour (evening)" if 16 <= peak_h <= 19 else \
-                     "Late night / early morning" if peak_h >= 22 or peak_h <= 4 else "Daytime"
-        recommendations.append({
-            "category": "⏰ Peak Time",
-            "finding": f"Most accidents at **{peak_h}:00** ({time_label})",
-            "recommendation": (
-                "• Increase traffic enforcement during peak hours\n"
-                "• Run public awareness campaigns for high-risk time periods\n"
-                "• Adjust traffic light timing to reduce congestion\n"
-                "• Encourage staggered work/school hours to ease rush hour pressure"
-            )
-        })
-    elif time_col and time_col in df.columns:
-        peak_period = df[time_col].value_counts().idxmax()
-        recommendations.append({
-            "category": "⏰ Peak Period",
-            "finding": f"Most accidents during **{peak_period}**",
-            "recommendation": (
-                "• Increase patrols and monitoring during this period\n"
-                "• Issue public safety alerts for high-risk time windows"
-            )
-        })
+    if 'crash_type' in fdf.columns:
+        st.markdown('<div class="section-title">Crash Type Distribution</div>', unsafe_allow_html=True)
+        ct = fdf['crash_type'].value_counts().reset_index()
+        ct.columns = ['Type','Count']
+        fig = px.pie(ct, values='Count', names='Type',
+                     color_discrete_sequence=[PALETTE[0],PALETTE[2]], hole=0.5)
+        fig.update_layout(**THEME)
+        st.plotly_chart(fig, use_container_width=True)
 
-    if weather_col and weather_col in df.columns:
-        worst_w = df[weather_col].value_counts().idxmax()
-        recommendations.append({
-            "category": "🌦️ Weather Conditions",
-            "finding": f"Most accidents in **{worst_w}** conditions",
-            "recommendation": (
-                "• Issue weather-based driving advisories and alerts\n"
-                "• Enforce reduced speed limits during adverse weather\n"
-                "• Improve road drainage to reduce wet/flooded surfaces\n"
-                "• Educate drivers on safe driving in poor visibility"
-            )
-        })
+    if 'weather_risk' in fdf.columns and 'road_risk' in fdf.columns:
+        st.markdown('<div class="section-title">Combined Risk Factor</div>', unsafe_allow_html=True)
+        risk_df = fdf.groupby(['weather_risk','road_risk']).size().reset_index(name='Count')
+        risk_df['Weather Risk'] = risk_df['weather_risk'].map({0:'Low',1:'High'})
+        risk_df['Road Risk']    = risk_df['road_risk'].map({0:'Low',1:'High'})
+        fig = px.bar(risk_df, x='Weather Risk', y='Count', color='Road Risk',
+                     barmode='group', color_discrete_sequence=[PALETTE[1],PALETTE[3]])
+        fig.update_layout(**THEME)
+        st.plotly_chart(fig, use_container_width=True)
 
-    if cause_col and cause_col in df.columns:
-        top_cause = df[cause_col].value_counts().idxmax()
-        recommendations.append({
-            "category": "🔍 Primary Cause",
-            "finding": f"Leading cause: **{top_cause}**",
-            "recommendation": (
-                "• Launch targeted awareness campaigns addressing this cause\n"
-                "• Strengthen penalties for related violations\n"
-                "• Introduce mandatory driver education programs\n"
-                "• Increase random checks and enforcement operations"
-            )
-        })
+# ─── TAB 3 ────────────────────────────────────────────────────────────────────
+with tab3:
+    st.markdown('<div class="section-title">Top 10 Primary Causes of Accidents</div>', unsafe_allow_html=True)
+    if 'prim_contributory_cause' in fdf.columns:
+        causes = fdf['prim_contributory_cause'].value_counts().head(10).reset_index()
+        causes.columns = ['Cause','Count']
+        fig = px.bar(causes, x='Count', y='Cause', orientation='h',
+                     color='Count', color_continuous_scale='Reds')
+        fig.update_layout(**THEME, coloraxis_showscale=False,
+                          yaxis={'categoryorder':'total ascending'}, height=420)
+        st.plotly_chart(fig, use_container_width=True)
 
-    recommendations.append({
-        "category": "🛡️ General Safety",
-        "finding": "Overall system-wide improvements",
-        "recommendation": (
-            "• Implement a real-time accident reporting and alert system\n"
-            "• Improve emergency response infrastructure near hotspots\n"
-            "• Use predictive analytics to pre-position traffic officers\n"
-            "• Collaborate with local government on road infrastructure upgrades\n"
-            "• Conduct annual road safety audits on high-risk corridors"
-        )
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown('<div class="section-title">Injury Breakdown</div>', unsafe_allow_html=True)
+        inj_cols = [c for c in ['injuries_fatal','injuries_incapacitating',
+                                  'injuries_non_incapacitating','injuries_total'] if c in fdf.columns]
+        if inj_cols:
+            inj_sums = fdf[inj_cols].sum().reset_index()
+            inj_sums.columns = ['Type','Count']
+            inj_sums['Type'] = inj_sums['Type'].str.replace('injuries_','').str.replace('_',' ').str.title()
+            fig = px.bar(inj_sums, x='Type', y='Count', color='Type', color_discrete_sequence=PALETTE)
+            fig.update_layout(**THEME, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+    with c2:
+        st.markdown('<div class="section-title">Severity Score Distribution</div>', unsafe_allow_html=True)
+        if 'severity_score' in fdf.columns:
+            fig = px.histogram(fdf[fdf['severity_score']>0], x='severity_score',
+                               nbins=30, color_discrete_sequence=[PALETTE[2]])
+            fig.update_layout(**THEME, xaxis_title="Severity Score", yaxis_title="Count")
+            st.plotly_chart(fig, use_container_width=True)
+
+    if 'crash_hour' in fdf.columns and 'severity_score' in fdf.columns:
+        st.markdown('<div class="section-title">Average Severity Score by Hour</div>', unsafe_allow_html=True)
+        sev_hour = fdf.groupby('crash_hour')['severity_score'].mean().reset_index()
+        fig = px.line(sev_hour, x='crash_hour', y='severity_score',
+                      markers=True, color_discrete_sequence=[PALETTE[2]])
+        fig.update_layout(**THEME, xaxis_title="Hour", yaxis_title="Avg Severity Score")
+        st.plotly_chart(fig, use_container_width=True)
+
+# ─── TAB 4 ────────────────────────────────────────────────────────────────────
+with tab4:
+    st.markdown("### 🤖 ML Model Performance Summary")
+
+    # ⬇️  Replace these numbers with your notebook's actual printed results
+    model_results = pd.DataFrame({
+        'Model':  ['Linear Regression','Decision Tree','Random Forest',
+                   'Gradient Boosting','XGBoost','LSTM'],
+        'MAE':    [0.312, 0.198, 0.145, 0.138, 0.132, 0.128],
+        'RMSE':   [0.481, 0.312, 0.241, 0.228, 0.219, 0.211],
+        'R²':     [0.312, 0.578, 0.712, 0.731, 0.748, 0.762],
+    })
+    clf_results = pd.DataFrame({
+        'Model':     ['Logistic Regression','Decision Tree','Random Forest',
+                      'Gradient Boosting','LSTM Classifier'],
+        'Accuracy':  [0.71, 0.78, 0.84, 0.86, 0.88],
+        'F1-Score':  [0.71, 0.78, 0.84, 0.86, 0.88],
     })
 
-    for rec in recommendations:
-        with st.expander(f"{rec['category']} — {rec['finding']}", expanded=True):
-            st.markdown(rec["recommendation"])
+    st.markdown("#### Regression — predicting `injuries_total`")
+    st.dataframe(model_results, use_container_width=True, hide_index=True)
+    fig = go.Figure([
+        go.Bar(name='R²',  x=model_results['Model'], y=model_results['R²'],  marker_color=PALETTE[0]),
+        go.Bar(name='MAE', x=model_results['Model'], y=model_results['MAE'], marker_color=PALETTE[2]),
+    ])
+    fig.update_layout(**THEME, barmode='group', title="Regression Model Comparison")
+    st.plotly_chart(fig, use_container_width=True)
 
-    rec_text = "\n\n".join(
-        [f"{r['category']}\nFinding: {r['finding']}\nRecommendations:\n{r['recommendation']}"
-         for r in recommendations]
-    )
-    st.download_button(
-        label="📥 Download Recommendations as TXT",
-        data=rec_text,
-        file_name="accident_recommendations.txt",
-        mime="text/plain"
-    )
+    st.markdown("#### Classification — predicting `crash_type`")
+    st.dataframe(clf_results, use_container_width=True, hide_index=True)
+    fig2 = px.bar(clf_results, x='Model', y='Accuracy',
+                  color='Accuracy', color_continuous_scale='Blues')
+    fig2.update_layout(**THEME, coloraxis_showscale=False)
+    st.plotly_chart(fig2, use_container_width=True)
 
-    # ── MODEL + FUTURE PREDICTION SECTION ────────────────────
-    st.header("🤖 Train Model & Predict Future Accidents")
+    st.info("💡 Update the `model_results` and `clf_results` DataFrames above with your notebook's actual scores.")
 
-    valid_targets = numeric_cols if numeric_cols else list(df.columns)
-    st.info("💡 **Tip:** Select a numeric count column as your target (e.g. injuries_total, accident_count). Avoid date columns.")
-    target = st.selectbox("Select target column (accident count to predict)", valid_targets)
-    features = st.multiselect("Select feature columns", [c for c in df.columns if c != target])
-
-    if features:
-        X = df[features].copy()
-        y = df[target].copy()
-
-        if y.dtype == "object" or str(y.dtype).startswith("datetime"):
-            try:
-                y_dt = pd.to_datetime(y, errors="coerce")
-                if y_dt.notna().sum() > len(y) * 0.5:
-                    st.warning("⚠️ Target looks like a date. Converting to ordinal.")
-                    y = y_dt.map(lambda x: x.toordinal() if pd.notna(x) else np.nan)
-                else:
-                    le_t = LabelEncoder()
-                    y = pd.Series(le_t.fit_transform(y.astype(str)))
-            except Exception:
-                le_t = LabelEncoder()
-                y = pd.Series(le_t.fit_transform(y.astype(str)))
-
-        y = pd.to_numeric(y, errors="coerce").fillna(0)
-
-        for col in X.columns:
-            if str(X[col].dtype).startswith("datetime"):
-                X[col] = pd.to_datetime(X[col], errors="coerce").map(
-                    lambda x: x.toordinal() if pd.notna(x) else 0)
-            elif X[col].dtype == "object":
-                try:
-                    parsed = pd.to_datetime(X[col], errors="raise")
-                    X[col] = parsed.map(lambda x: x.toordinal() if pd.notna(x) else 0)
-                except Exception:
-                    X[col] = X[col].fillna(X[col].mode()[0] if not X[col].mode().empty else "Unknown")
-            else:
-                X[col] = X[col].fillna(X[col].median())
-
-        cat_cols = X.select_dtypes(include="object").columns.tolist()
-        label_encoders = {}
-        if cat_cols:
-            st.info(f"ℹ️ Auto-encoding: {cat_cols}")
-            for col in cat_cols:
-                le = LabelEncoder()
-                X[col] = le.fit_transform(X[col].astype(str))
-                label_encoders[col] = le
-
-        X = X.apply(pd.to_numeric, errors="coerce").fillna(0)
-
-        st.subheader("✅ Preprocessed Feature Preview")
-        st.dataframe(X.head())
-
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-        col1, col2 = st.columns(2)
-        with col1:
-            n_estimators = st.slider("n_estimators", 50, 500, 100)
-        with col2:
-            learning_rate = st.slider("learning_rate", 0.01, 0.5, 0.1)
-
-        if st.button("🚀 Train Model"):
-            with st.spinner("Training model..."):
-                model = GradientBoostingRegressor(
-                    n_estimators=n_estimators,
-                    learning_rate=learning_rate,
-                    random_state=42
-                )
-                model.fit(X_train, y_train)
-                y_pred = model.predict(X_test)
-
-            st.success("✅ Model trained successfully!")
-
-            st.subheader("📈 Evaluation Metrics")
-            col1, col2, col3 = st.columns(3)
-            col1.metric("MAE", round(mean_absolute_error(y_test, y_pred), 4))
-            col2.metric("RMSE", round(np.sqrt(mean_squared_error(y_test, y_pred)), 4))
-            col3.metric("R² Score", round(r2_score(y_test, y_pred), 4))
-
-            st.subheader("🌟 Feature Importances")
-            fi = pd.Series(model.feature_importances_, index=features).sort_values(ascending=False)
-            fig, ax = plt.subplots(figsize=(8, 4))
-            fi.plot(kind="bar", ax=ax, color="steelblue", edgecolor="black")
-            ax.set_title("Feature Importances")
-            plt.xticks(rotation=45, ha="right")
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
-
-            st.subheader("🔍 Actual vs Predicted")
-            result_df = pd.DataFrame({"Actual": y_test.values, "Predicted": np.round(y_pred, 2)}).reset_index(drop=True)
-            st.line_chart(result_df)
-
-            st.subheader("🔮 Predict Future Accidents")
-            st.write("Adjust values below to simulate future conditions:")
-
-            future_input = {}
-            ui_cols = st.columns(min(3, len(features)))
-            for i, feat in enumerate(features):
-                with ui_cols[i % min(3, len(features))]:
-                    if feat in cat_cols and feat in label_encoders:
-                        options = label_encoders[feat].classes_.tolist()
-                        chosen = st.selectbox(f"{feat}", options, key=f"fut_{feat}")
-                        future_input[feat] = int(label_encoders[feat].transform([chosen])[0])
-                    else:
-                        min_val = float(X[feat].min())
-                        max_val = float(X[feat].max())
-                        mean_val = float(X[feat].mean())
-                        if min_val == max_val:
-                            max_val = min_val + 1.0
-                        future_input[feat] = st.slider(f"{feat}", min_val, max_val, mean_val, key=f"fut_{feat}")
-
-            future_df = pd.DataFrame([future_input])
-            future_pred = max(0, round(float(model.predict(future_df)[0]), 2))
-            avg = float(y.mean())
-
-            st.markdown("---")
-            st.subheader("🚨 Predicted Future Accident Count")
-            st.metric("Predicted Number of Accidents", f"{future_pred:,}")
-
-            if future_pred > avg * 1.2:
-                st.error("⚠️ HIGH RISK: Exceeds historical average by >20%. Immediate action needed!")
-            elif future_pred > avg:
-                st.warning("🟡 MODERATE RISK: Above historical average. Caution advised.")
-            else:
-                st.success("🟢 LOW RISK: Below historical average.")
-
-            st.subheader("📆 Simulated Future Trend (Next 12 Periods)")
-            future_preds = []
-            for i in range(1, 13):
-                temp = future_df.copy()
-                for col in temp.columns:
-                    if col not in cat_cols:
-                        temp[col] = temp[col] * (1 + i * 0.01)
-                future_preds.append(max(0, float(model.predict(temp)[0])))
-
-            fig, ax = plt.subplots(figsize=(10, 4))
-            ax.plot(range(1, 13), future_preds, marker="o", color="darkorange", linewidth=2, label="Predicted")
-            ax.fill_between(range(1, 13), future_preds, alpha=0.2, color="darkorange")
-            ax.axhline(avg, color="red", linestyle="--", linewidth=1.5, label=f"Historical Avg: {avg:.1f}")
-            ax.set_title("Simulated Accident Trend Over Next 12 Periods")
-            ax.set_xlabel("Future Period")
-            ax.set_ylabel("Predicted Accidents")
-            ax.legend()
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
-
-            st.subheader("📋 Future Prediction Summary Table")
-            summary_df = pd.DataFrame({
-                "Period": [f"Period {i}" for i in range(1, 13)],
-                "Predicted Accidents": [round(p, 2) for p in future_preds],
-                "vs Historical Avg": [f"{'▲' if p > avg else '▼'} {abs(round(p - avg, 2))}" for p in future_preds]
-            })
-            st.dataframe(summary_df)
+# ── Footer ────────────────────────────────────────────────────────────────────
+st.markdown("---")
+st.markdown("<p style='text-align:center;color:#4a5270;font-size:0.8rem;'>"
+            "Traffic Accident Analytics Dashboard • Streamlit + Plotly</p>", unsafe_allow_html=True)
