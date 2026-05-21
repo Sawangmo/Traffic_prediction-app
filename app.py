@@ -43,14 +43,6 @@ st.set_page_config(
 st.title("🚦 Traffic Accident Prediction System")
 
 st.markdown("""
-This application provides:
-
-✅ Exploratory Data Analysis  
-✅ Machine Learning Models  
-✅ Deep Learning Models  
-✅ Time-Series Forecasting  
-✅ Interactive Visualizations  
-
 Please upload your dataset to begin.
 """)
 
@@ -173,13 +165,8 @@ else:
             "Select Categorical Column",
             categorical_cols
         )
-
         value_counts = df[selected_cat_col].value_counts().reset_index()
-
         value_counts.columns = [selected_cat_col, "Count"]
-
-        value_counts = value_counts.head(20)
-
         fig3 = px.bar(
             value_counts,
             x="Count",
@@ -187,8 +174,7 @@ else:
             orientation="h",
             title=f"{selected_cat_col} Distribution"
         )
-
-        st.plotly_chart(fig3, use_container_width=True)
+        st.plotly_chart(fig3, width="stretch")
 
     # ---------------------------------------------------
     # CORRELATION HEATMAP
@@ -348,12 +334,14 @@ else:
 
         cm = confusion_matrix(y_test, predictions)
 
+        labels = [str(i) for i in range(cm.shape[0])]
         fig6 = ff.create_annotated_heatmap(
             z=cm,
-            x=[str(i) for i in np.unique(y)],
-            y=[str(i) for i in np.unique(y)],
+            x=labels,
+            y=labels,
             colorscale="Viridis"
         )
+        st.plotly_chart(fig6, width="stretch")
 
         st.subheader("📉 Confusion Matrix")
 
