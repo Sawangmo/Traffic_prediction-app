@@ -1,8 +1,11 @@
+
 streamlit
 pandas
 numpy
 plotly
 scikit-learn
 tensorflow
-prophet
+xgboost
+statsmodels
 matplotlib
+seaborn
