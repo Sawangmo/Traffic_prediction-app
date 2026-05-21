@@ -3,7 +3,5 @@ pandas
 numpy
 plotly
 scikit-learn
-xgboost
-tensorflow
-statsmodels
-imbalanced-learn
+matplotlib
+seaborn
