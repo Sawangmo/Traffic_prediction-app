@@ -707,11 +707,18 @@ if uploaded_file:
         """, unsafe_allow_html=True)
 
         data_check = drop_datetime_cols(df.copy())
+        # Convert Categorical dtype columns (e.g. from pd.cut) to string first
+        for col in data_check.columns:
+            if hasattr(data_check[col], 'cat'):
+                data_check[col] = data_check[col].astype(str)
         for col in data_check.columns:
             if data_check[col].dtype == 'object':
                 data_check[col] = LabelEncoder().fit_transform(data_check[col].fillna('missing').astype(str))
-            else:
+            elif pd.api.types.is_numeric_dtype(data_check[col]):
                 data_check[col] = data_check[col].fillna(data_check[col].median())
+            else:
+                # Fallback for any other non-numeric type
+                data_check[col] = LabelEncoder().fit_transform(data_check[col].astype(str).fillna('missing'))
 
         num_cols_check = get_numeric_cols(data_check)
         if num_cols_check:
@@ -745,11 +752,18 @@ if uploaded_file:
     # SHARED ENCODING (for ML tabs)
     # ══════════════════════════════════════════════
     data_enc = drop_datetime_cols(df.copy())
+    # Convert Categorical dtype columns (e.g. from pd.cut) to string first
+    for col in data_enc.columns:
+        if hasattr(data_enc[col], 'cat'):
+            data_enc[col] = data_enc[col].astype(str)
     for col in data_enc.columns:
         if data_enc[col].dtype == 'object':
             data_enc[col] = data_enc[col].fillna(data_enc[col].mode()[0] if not data_enc[col].mode().empty else 'missing')
-        else:
+        elif pd.api.types.is_numeric_dtype(data_enc[col]):
             data_enc[col] = data_enc[col].fillna(data_enc[col].median())
+        else:
+            # Fallback for any other non-numeric type
+            data_enc[col] = data_enc[col].astype(str).fillna('missing')
 
     for col in data_enc.select_dtypes(include='object').columns:
         data_enc[col] = LabelEncoder().fit_transform(data_enc[col].astype(str))
