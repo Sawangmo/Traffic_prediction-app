@@ -1,1308 +1,2274 @@
-# -*- coding: utf-8 -*-
+# Traffic Accident Intelligence Dashboard (Part 1)
+
+# Dashboard + EDA + Professional UI
+
+```python
+# ============================================================
+# TRAFFIC ACCIDENT INTELLIGENCE DASHBOARD
+# PART 1 - PROFESSIONAL UI + DASHBOARD + EDA
+# ============================================================
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import plotly.figure_factory as ff
 from plotly.subplots import make_subplots
 import warnings
-warnings.filterwarnings('ignore')
 
-# Machine Learning
-from sklearn.model_selection import train_test_split, cross_val_score, KFold
-from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    confusion_matrix, mean_absolute_error, mean_squared_error, r2_score,
-    roc_auc_score, classification_report
-)
-from sklearn.linear_model import LogisticRegression, LinearRegression, Ridge
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
-from sklearn.ensemble import (
-    RandomForestClassifier, RandomForestRegressor,
-    GradientBoostingClassifier, GradientBoostingRegressor
-)
-from sklearn.inspection import permutation_importance
+warnings.filterwarnings("ignore")
 
-try:
-    from xgboost import XGBRegressor, XGBClassifier
-    XGBOOST_AVAILABLE = True
-except ImportError:
-    XGBOOST_AVAILABLE = False
-
-# Deep Learning
-try:
-    import tensorflow as tf
-    from tensorflow.keras.models import Sequential
-    from tensorflow.keras.layers import Dense, LSTM, Dropout, BatchNormalization
-    from tensorflow.keras.callbacks import EarlyStopping
-    TF_AVAILABLE = True
-except ImportError:
-    TF_AVAILABLE = False
-
-# Time Series
-try:
-    from statsmodels.tsa.statespace.sarimax import SARIMAX
-    STATSMODELS_AVAILABLE = True
-except ImportError:
-    STATSMODELS_AVAILABLE = False
-
-# --------------------------------------------------
-# PAGE CONFIG & CUSTOM THEME
-# --------------------------------------------------
+# ------------------------------------------------------------
+# PAGE CONFIG
+# ------------------------------------------------------------
 st.set_page_config(
     page_title="Traffic Accident Intelligence",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_icon="🚦",
+    layout="wide"
 )
 
+# ------------------------------------------------------------
+# PROFESSIONAL LIGHT THEME
+# ------------------------------------------------------------
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;600;700&display=swap');
 
-    :root {
-        --bg: #0d0f14;
-        --surface: #161920;
-        --surface2: #1e2330;
-        --accent: #f97316;
-        --accent2: #3b82f6;
-        --accent3: #22c55e;
-        --warn: #eab308;
-        --danger: #ef4444;
-        --text: #e2e8f0;
-        --muted: #64748b;
-        --border: #2a3044;
-    }
+.main {
+    background-color:#f8fafc;
+}
 
-    .stApp {
-        background: var(--bg);
-        font-family: 'DM Sans', sans-serif;
-        color: var(--text);
-    }
+.stApp{
+    background-color:#f8fafc;
+}
 
-    h1, h2, h3, h4 {
-        font-family: 'Space Mono', monospace;
-    }
+h1,h2,h3,h4{
+    color:#0f172a;
+}
 
-    /* Header */
-    .main-header {
-        background: linear-gradient(135deg, #0d0f14 0%, #1a1f2e 50%, #0d0f14 100%);
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        padding: 2rem 2.5rem;
-        margin-bottom: 2rem;
-        position: relative;
-        overflow: hidden;
-    }
-    .main-header::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        left: -50%;
-        width: 200%;
-        height: 200%;
-        background: radial-gradient(ellipse at 30% 50%, rgba(249,115,22,0.08) 0%, transparent 60%),
-                    radial-gradient(ellipse at 70% 50%, rgba(59,130,246,0.06) 0%, transparent 60%);
-        pointer-events: none;
-    }
-    .main-header h1 {
-        font-size: 2.2rem;
-        margin: 0;
-        background: linear-gradient(90deg, #f97316, #fb923c, #e2e8f0);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-    }
-    .main-header p {
-        color: var(--muted);
-        margin: 0.5rem 0 0;
-        font-size: 0.95rem;
-        letter-spacing: 0.05em;
-    }
+.metric-card{
+    background:white;
+    padding:20px;
+    border-radius:12px;
+    box-shadow:0 2px 10px rgba(0,0,0,0.08);
+    text-align:center;
+    margin-bottom:10px;
+}
 
-    /* Metric cards */
-    .metric-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem;
-        margin: 1rem 0;
-    }
-    .metric-card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 1.25rem 1.5rem;
-        position: relative;
-        overflow: hidden;
-    }
-    .metric-card::before {
-        content: '';
-        position: absolute;
-        top: 0; left: 0; right: 0;
-        height: 3px;
-        border-radius: 12px 12px 0 0;
-    }
-    .metric-card.orange::before { background: var(--accent); }
-    .metric-card.blue::before   { background: var(--accent2); }
-    .metric-card.green::before  { background: var(--accent3); }
-    .metric-card.yellow::before { background: var(--warn); }
-    .metric-card.red::before    { background: var(--danger); }
+.metric-title{
+    font-size:16px;
+    color:#64748b;
+    font-weight:600;
+}
 
-    .metric-label {
-        font-size: 0.75rem;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        color: var(--muted);
-        margin-bottom: 0.5rem;
-        font-family: 'Space Mono', monospace;
-    }
-    .metric-value {
-        font-size: 2rem;
-        font-weight: 700;
-        font-family: 'Space Mono', monospace;
-        color: var(--text);
-        line-height: 1;
-    }
-    .metric-sub {
-        font-size: 0.8rem;
-        color: var(--muted);
-        margin-top: 0.4rem;
-    }
+.metric-value{
+    font-size:34px;
+    color:#0f172a;
+    font-weight:700;
+}
 
-    /* Section headers */
-    .section-header {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        margin: 2rem 0 1rem;
-        padding-bottom: 0.75rem;
-        border-bottom: 1px solid var(--border);
-    }
-    .section-icon {
-        width: 32px; height: 32px;
-        background: var(--surface2);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 1rem;
-    }
-    .section-title {
-        font-family: 'Space Mono', monospace;
-        font-size: 1rem;
-        font-weight: 700;
-        color: var(--text);
-        margin: 0;
-    }
-    .section-badge {
-        margin-left: auto;
-        background: var(--surface2);
-        border: 1px solid var(--border);
-        border-radius: 99px;
-        padding: 0.2rem 0.75rem;
-        font-size: 0.7rem;
-        color: var(--muted);
-        font-family: 'Space Mono', monospace;
-    }
+.section-header{
+    background:#2563eb;
+    color:white;
+    padding:12px;
+    border-radius:10px;
+    font-size:22px;
+    font-weight:bold;
+    margin-top:20px;
+    margin-bottom:20px;
+}
 
-    /* Alert boxes */
-    .alert-warning {
-        background: rgba(234,179,8,0.1);
-        border: 1px solid rgba(234,179,8,0.3);
-        border-radius: 10px;
-        padding: 1rem 1.25rem;
-        margin: 1rem 0;
-        color: #fde68a;
-        font-size: 0.9rem;
-    }
-    .alert-info {
-        background: rgba(59,130,246,0.1);
-        border: 1px solid rgba(59,130,246,0.3);
-        border-radius: 10px;
-        padding: 1rem 1.25rem;
-        margin: 1rem 0;
-        color: #93c5fd;
-        font-size: 0.9rem;
-    }
-    .alert-success {
-        background: rgba(34,197,94,0.1);
-        border: 1px solid rgba(34,197,94,0.3);
-        border-radius: 10px;
-        padding: 1rem 1.25rem;
-        margin: 1rem 0;
-        color: #86efac;
-        font-size: 0.9rem;
-    }
-    .alert-danger {
-        background: rgba(239,68,68,0.1);
-        border: 1px solid rgba(239,68,68,0.3);
-        border-radius: 10px;
-        padding: 1rem 1.25rem;
-        margin: 1rem 0;
-        color: #fca5a5;
-        font-size: 0.9rem;
-    }
+.info-box{
+    background:white;
+    border-left:5px solid #2563eb;
+    padding:15px;
+    border-radius:10px;
+    margin-bottom:15px;
+}
 
-    /* Best model badge */
-    .best-badge {
-        display: inline-block;
-        background: linear-gradient(135deg, #f97316, #ea580c);
-        color: white;
-        font-family: 'Space Mono', monospace;
-        font-size: 0.65rem;
-        padding: 0.2rem 0.6rem;
-        border-radius: 99px;
-        margin-left: 0.5rem;
-        vertical-align: middle;
-    }
-
-    /* Leaderboard table */
-    .leaderboard-row {
-        display: flex;
-        align-items: center;
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 0.85rem 1.25rem;
-        margin-bottom: 0.5rem;
-        gap: 1rem;
-        font-family: 'Space Mono', monospace;
-        font-size: 0.85rem;
-        transition: border-color 0.2s;
-    }
-    .leaderboard-row:first-child {
-        border-color: var(--accent);
-        background: rgba(249,115,22,0.05);
-    }
-    .rank { width: 28px; color: var(--muted); }
-    .rank.gold { color: #fbbf24; font-size: 1.1rem; }
-    .model-name { flex: 1; color: var(--text); }
-    .score-pill {
-        background: var(--surface2);
-        border-radius: 99px;
-        padding: 0.15rem 0.6rem;
-        font-size: 0.75rem;
-        color: var(--muted);
-    }
-    .score-pill.good { color: var(--accent3); border: 1px solid rgba(34,197,94,0.3); }
-    .score-pill.warn { color: var(--warn); border: 1px solid rgba(234,179,8,0.3); }
-    .score-pill.bad  { color: var(--danger); border: 1px solid rgba(239,68,68,0.3); }
-
-    /* Sidebar */
-    .stSidebar {
-        background: var(--surface) !important;
-        border-right: 1px solid var(--border) !important;
-    }
-
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        background: var(--surface);
-        border-radius: 10px;
-        padding: 0.25rem;
-        gap: 0.25rem;
-        border: 1px solid var(--border);
-    }
-    .stTabs [data-baseweb="tab"] {
-        background: transparent;
-        color: var(--muted);
-        border-radius: 8px;
-        font-family: 'Space Mono', monospace;
-        font-size: 0.8rem;
-    }
-    .stTabs [aria-selected="true"] {
-        background: var(--surface2) !important;
-        color: var(--text) !important;
-    }
-
-    /* Plotly charts background */
-    .js-plotly-plot .plotly { background: transparent !important; }
-
-    /* Buttons */
-    .stButton > button {
-        background: linear-gradient(135deg, #f97316, #ea580c);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-family: 'Space Mono', monospace;
-        font-size: 0.8rem;
-        letter-spacing: 0.05em;
-        padding: 0.6rem 1.5rem;
-        transition: opacity 0.2s, transform 0.1s;
-    }
-    .stButton > button:hover {
-        opacity: 0.9;
-        transform: translateY(-1px);
-    }
-
-    /* Selectbox & inputs */
-    .stSelectbox > div > div, .stSlider {
-        background: var(--surface2) !important;
-        border-color: var(--border) !important;
-        color: var(--text) !important;
-    }
-
-    /* Expander */
-    .streamlit-expanderHeader {
-        background: var(--surface) !important;
-        border: 1px solid var(--border) !important;
-        border-radius: 10px !important;
-        font-family: 'Space Mono', monospace;
-        font-size: 0.85rem;
-    }
-    .streamlit-expanderContent {
-        background: var(--surface) !important;
-        border: 1px solid var(--border) !important;
-        border-top: none !important;
-    }
-
-    div[data-testid="stDataFrame"] {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        overflow: hidden;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# --------------------------------------------------
+# ------------------------------------------------------------
 # PLOTLY THEME
-# --------------------------------------------------
+# ------------------------------------------------------------
 PLOTLY_LAYOUT = dict(
-    paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(0,0,0,0)',
-    font=dict(family='DM Sans, sans-serif', color='#94a3b8', size=12),
-    xaxis=dict(gridcolor='#1e2330', linecolor='#2a3044', zeroline=False),
-    yaxis=dict(gridcolor='#1e2330', linecolor='#2a3044', zeroline=False),
-    margin=dict(l=20, r=20, t=50, b=20),
-    colorway=['#f97316','#3b82f6','#22c55e','#eab308','#a855f7','#ec4899','#14b8a6'],
+    template="plotly_white",
+    font=dict(size=15),
+    title_font=dict(size=22),
+    legend=dict(font=dict(size=13)),
+    margin=dict(l=40, r=40, t=60, b=40),
+    height=550
 )
 
-COLOR_SEQ = ['#f97316','#3b82f6','#22c55e','#eab308','#a855f7','#ec4899','#14b8a6']
-
-# --------------------------------------------------
-# HELPERS
-# --------------------------------------------------
+# ------------------------------------------------------------
+# HELPER FUNCTIONS
+# ------------------------------------------------------------
 def get_numeric_cols(df):
-    return [c for c in df.columns
-            if pd.api.types.is_numeric_dtype(df[c])
-            and not pd.api.types.is_datetime64_any_dtype(df[c])]
+    return [
+        c for c in df.columns
+        if pd.api.types.is_numeric_dtype(df[c])
+    ]
 
 def get_categorical_cols(df):
-    return [c for c in df.columns if df[c].dtype == 'object']
+    return [
+        c for c in df.columns
+        if df[c].dtype == "object"
+    ]
 
-def drop_datetime_cols(df):
-    dt_cols = [c for c in df.columns if pd.api.types.is_datetime64_any_dtype(df[c])]
-    return df.drop(columns=dt_cols)
-
-def r2_label(r2):
-    if r2 >= 0.85:
-        return 'good'
-    elif r2 >= 0.5:
-        return 'warn'
-    return 'bad'
-
-def cv_scores(model, X, y, task='regression', cv=5):
-    """Return cross-validated scores to prevent data leakage inflating metrics."""
-    kf = KFold(n_splits=cv, shuffle=True, random_state=42)
-    if task == 'regression':
-        scores = cross_val_score(model, X, y, cv=kf, scoring='r2')
-    else:
-        scores = cross_val_score(model, X, y, cv=kf, scoring='accuracy')
-    return scores
-
-def make_chart(fig):
-    fig.update_layout(**PLOTLY_LAYOUT)
-    return fig
-
-def detect_leakage(X, y, threshold=0.98):
-    """Warn if any single feature explains almost all variance."""
-    leaky = []
-    for col in X.columns:
-        try:
-            r = np.corrcoef(X[col].astype(float), y.astype(float))[0, 1]
-            if abs(r) > threshold:
-                leaky.append((col, round(r, 4)))
-        except Exception:
-            pass
-    return leaky
-
-# --------------------------------------------------
+# ------------------------------------------------------------
 # HEADER
-# --------------------------------------------------
+# ------------------------------------------------------------
+st.title("🚦 Traffic Accident Intelligence Dashboard")
+
 st.markdown("""
-<div class="main-header">
-  <h1>🚦 Traffic Accident Intelligence</h1>
-  <p>MACHINE LEARNING · DEEP LEARNING · TIME SERIES FORECASTING · INTERACTIVE DASHBOARD</p>
-</div>
-""", unsafe_allow_html=True)
+### Machine Learning • Deep Learning • Forecasting
 
-# --------------------------------------------------
+Interactive platform for traffic accident analysis,
+prediction, visualization and decision support.
+""")
+
+# ------------------------------------------------------------
 # FILE UPLOAD
-# --------------------------------------------------
-uploaded_file = st.file_uploader("📂 Upload Traffic Accident Dataset (.csv)", type=["csv"])
+# ------------------------------------------------------------
+uploaded_file = st.file_uploader(
+    "Upload Traffic Accident Dataset",
+    type=["csv"]
+)
 
-# --------------------------------------------------
-# MAIN
-# --------------------------------------------------
-if uploaded_file:
-    df = pd.read_csv(uploaded_file)
+# ------------------------------------------------------------
+# NO FILE STATE
+# ------------------------------------------------------------
+if uploaded_file is None:
 
-    if 'crash_date' in df.columns:
-        try:
-            df['crash_date'] = pd.to_datetime(df['crash_date'])
-        except Exception:
-            pass
+    st.info("""
+    Upload a CSV dataset to begin.
 
-    # ──────────────────────────────────────────────
-    # TABS
-    # ──────────────────────────────────────────────
-    tabs = st.tabs([
-        "📊 Dashboard",
-        "🔍 EDA",
-        "⚙️ Features",
-        "🤖 ML Models",
-        "🧠 Deep Learning",
-        "📅 Time Series",
-        "🏆 Model Comparison"
-    ])
+    Recommended columns:
+    - crash_date
+    - crash_hour
+    - crash_day_of_week
+    - injuries_total
+    - crash_type
+    """)
 
-    # ══════════════════════════════════════════════
-    # TAB 1: DASHBOARD
-    # ══════════════════════════════════════════════
-    with tabs[0]:
-        st.markdown("""
-        <div class="section-header">
-          <div class="section-icon">📊</div>
-          <p class="section-title">DATASET OVERVIEW</p>
-          <span class="section-badge">LIVE</span>
-        </div>
-        """, unsafe_allow_html=True)
+    st.stop()
 
-        num_cols = get_numeric_cols(df)
-        cat_cols = get_categorical_cols(df)
-        missing_pct = round(df.isnull().sum().sum() / df.size * 100, 2)
+# ------------------------------------------------------------
+# LOAD DATA
+# ------------------------------------------------------------
+df = pd.read_csv(uploaded_file)
 
-        st.markdown(f"""
-        <div class="metric-grid">
-          <div class="metric-card orange">
-            <div class="metric-label">Total Records</div>
-            <div class="metric-value">{df.shape[0]:,}</div>
-            <div class="metric-sub">rows in dataset</div>
-          </div>
-          <div class="metric-card blue">
-            <div class="metric-label">Features</div>
-            <div class="metric-value">{df.shape[1]}</div>
-            <div class="metric-sub">total columns</div>
-          </div>
-          <div class="metric-card green">
-            <div class="metric-label">Numeric Cols</div>
-            <div class="metric-value">{len(num_cols)}</div>
-            <div class="metric-sub">continuous features</div>
-          </div>
-          <div class="metric-card yellow">
-            <div class="metric-label">Missing %</div>
-            <div class="metric-value">{missing_pct}%</div>
-            <div class="metric-sub">{int(df.isnull().sum().sum())} missing cells</div>
-          </div>
-          <div class="metric-card red">
-            <div class="metric-label">Categorical</div>
-            <div class="metric-value">{len(cat_cols)}</div>
-            <div class="metric-sub">object columns</div>
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
+if "crash_date" in df.columns:
+    try:
+        df["crash_date"] = pd.to_datetime(df["crash_date"])
+    except:
+        pass
 
-        # Quick visual overview
-        c1, c2 = st.columns(2)
+# ------------------------------------------------------------
+# TABS
+# ------------------------------------------------------------
+tab1, tab2 = st.tabs([
+    "📊 Dashboard",
+    "🔍 Exploratory Data Analysis"
+])
+
+# ============================================================
+# DASHBOARD TAB
+# ============================================================
+with tab1:
+
+    st.markdown(
+        '<div class="section-header">Dataset Overview</div>',
+        unsafe_allow_html=True
+    )
+
+    num_cols = get_numeric_cols(df)
+    cat_cols = get_categorical_cols(df)
+
+    missing_pct = round(
+        (df.isnull().sum().sum() / df.size) * 100,
+        2
+    )
+
+    c1,c2,c3,c4,c5 = st.columns(5)
+
+    with c1:
+        st.metric(
+            "Total Records",
+            f"{df.shape[0]:,}"
+        )
+
+    with c2:
+        st.metric(
+            "Total Features",
+            df.shape[1]
+        )
+
+    with c3:
+        st.metric(
+            "Numeric Columns",
+            len(num_cols)
+        )
+
+    with c4:
+        st.metric(
+            "Categorical Columns",
+            len(cat_cols)
+        )
+
+    with c5:
+        st.metric(
+            "Missing %",
+            f"{missing_pct}%"
+        )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # Missing Values
+    # --------------------------------------------------------
+    col1,col2 = st.columns(2)
+
+    with col1:
+
+        miss = (
+            df.isnull()
+            .sum()
+            .reset_index()
+        )
+
+        miss.columns = [
+            "Column",
+            "Missing"
+        ]
+
+        miss = miss[
+            miss["Missing"] > 0
+        ]
+
+        if len(miss) > 0:
+
+            fig = px.bar(
+                miss.sort_values("Missing"),
+                x="Missing",
+                y="Column",
+                orientation="h",
+                title="Missing Values by Column",
+                color="Missing"
+            )
+
+            fig.update_layout(**PLOTLY_LAYOUT)
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+        else:
+            st.success(
+                "No missing values detected."
+            )
+
+    # --------------------------------------------------------
+    # Data Types
+    # --------------------------------------------------------
+    with col2:
+
+        dtypes = (
+            df.dtypes
+            .astype(str)
+            .value_counts()
+            .reset_index()
+        )
+
+        dtypes.columns = [
+            "Type",
+            "Count"
+        ]
+
+        fig = px.pie(
+            dtypes,
+            names="Type",
+            values="Count",
+            hole=0.55,
+            title="Data Type Distribution"
+        )
+
+        fig.update_layout(**PLOTLY_LAYOUT)
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
+
+    # --------------------------------------------------------
+    # Preview
+    # --------------------------------------------------------
+    st.markdown(
+        '<div class="section-header">Dataset Preview</div>',
+        unsafe_allow_html=True
+    )
+
+    st.dataframe(
+        df.head(100),
+        use_container_width=True,
+        height=450
+    )
+
+    # --------------------------------------------------------
+    # Summary
+    # --------------------------------------------------------
+    st.markdown(
+        '<div class="section-header">Statistical Summary</div>',
+        unsafe_allow_html=True
+    )
+
+    st.dataframe(
+        df.describe(include="all"),
+        use_container_width=True,
+        height=450
+    )
+
+# ============================================================
+# EDA TAB
+# ============================================================
+with tab2:
+
+    st.markdown(
+        '<div class="section-header">Numerical Analysis</div>',
+        unsafe_allow_html=True
+    )
+
+    numeric_cols = get_numeric_cols(df)
+
+    if len(numeric_cols) > 0:
+
+        selected_num = st.selectbox(
+            "Select Numeric Column",
+            numeric_cols
+        )
+
+        c1,c2 = st.columns(2)
+
         with c1:
-            missing_data = df.isnull().sum().reset_index()
-            missing_data.columns = ['Column', 'Missing']
-            missing_data = missing_data[missing_data['Missing'] > 0].sort_values('Missing', ascending=True)
-            if not missing_data.empty:
-                fig = px.bar(missing_data, x='Missing', y='Column', orientation='h',
-                             title='Missing Values by Column', color='Missing',
-                             color_continuous_scale=[[0,'#3b82f6'],[1,'#ef4444']])
-                fig.update_layout(**PLOTLY_LAYOUT)
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.markdown('<div class="alert-success">✅ No missing values detected in the dataset.</div>', unsafe_allow_html=True)
+
+            fig = px.histogram(
+                df,
+                x=selected_num,
+                nbins=40,
+                title=f"Distribution of {selected_num}"
+            )
+
+            fig.update_layout(**PLOTLY_LAYOUT)
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
 
         with c2:
-            dtype_counts = df.dtypes.value_counts().reset_index()
-            dtype_counts.columns = ['Type', 'Count']
-            dtype_counts['Type'] = dtype_counts['Type'].astype(str)
-            fig2 = px.pie(dtype_counts, names='Type', values='Count',
-                          title='Column Data Types', hole=0.55,
-                          color_discrete_sequence=COLOR_SEQ)
-            fig2.update_layout(**PLOTLY_LAYOUT)
-            st.plotly_chart(fig2, use_container_width=True)
 
-        st.markdown("""
-        <div class="section-header">
-          <div class="section-icon">👁️</div>
-          <p class="section-title">DATA PREVIEW</p>
-        </div>
-        """, unsafe_allow_html=True)
-        st.dataframe(df.head(50), use_container_width=True)
+            fig = px.box(
+                df,
+                y=selected_num,
+                title=f"Boxplot of {selected_num}"
+            )
 
-    # ══════════════════════════════════════════════
-    # TAB 2: EDA
-    # ══════════════════════════════════════════════
-    with tabs[1]:
-        num_cols = get_numeric_cols(df)
-        cat_cols = get_categorical_cols(df)
-
-        st.markdown("""
-        <div class="section-header">
-          <div class="section-icon">📈</div>
-          <p class="section-title">NUMERICAL ANALYSIS</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if num_cols:
-            sel_num = st.selectbox("Select numeric column", num_cols, key='eda_num')
-            c1, c2 = st.columns(2)
-            with c1:
-                fig = px.histogram(df, x=sel_num, nbins=40,
-                                   title=f'Distribution — {sel_num}',
-                                   color_discrete_sequence=['#f97316'])
-                fig.update_layout(**PLOTLY_LAYOUT)
-                st.plotly_chart(fig, use_container_width=True)
-            with c2:
-                fig2 = px.box(df, y=sel_num, title=f'Boxplot — {sel_num}',
-                              color_discrete_sequence=['#3b82f6'])
-                fig2.update_layout(**PLOTLY_LAYOUT)
-                st.plotly_chart(fig2, use_container_width=True)
-
-            # Stats summary
-            stats = df[sel_num].describe().round(3)
-            cols = st.columns(len(stats))
-            for i, (k, v) in enumerate(stats.items()):
-                cols[i].metric(k, v)
-
-        st.markdown("""
-        <div class="section-header">
-          <div class="section-icon">📊</div>
-          <p class="section-title">CATEGORICAL ANALYSIS</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if cat_cols:
-            sel_cat = st.selectbox("Select categorical column", cat_cols, key='eda_cat')
-            vc = df[sel_cat].value_counts().reset_index()
-            vc.columns = [sel_cat, 'Count']
-            c1, c2 = st.columns(2)
-            with c1:
-                fig = px.bar(vc.head(20), x='Count', y=sel_cat, orientation='h',
-                             title=f'{sel_cat} Distribution',
-                             color='Count', color_continuous_scale=[[0,'#1e2330'],[1,'#f97316']])
-                fig.update_layout(**PLOTLY_LAYOUT)
-                st.plotly_chart(fig, use_container_width=True)
-            with c2:
-                fig2 = px.pie(vc.head(10), names=sel_cat, values='Count',
-                              title=f'{sel_cat} Share', hole=0.4,
-                              color_discrete_sequence=COLOR_SEQ)
-                fig2.update_layout(**PLOTLY_LAYOUT)
-                st.plotly_chart(fig2, use_container_width=True)
-
-        st.markdown("""
-        <div class="section-header">
-          <div class="section-icon">🔥</div>
-          <p class="section-title">CORRELATION MATRIX</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if len(num_cols) > 1:
-            corr = df[num_cols].corr()
-            fig = px.imshow(corr, text_auto='.2f', aspect='auto',
-                            title='Feature Correlation Heatmap',
-                            color_continuous_scale='RdYlGn',
-                            zmin=-1, zmax=1)
             fig.update_layout(**PLOTLY_LAYOUT)
-            st.plotly_chart(fig, use_container_width=True)
 
-            # Scatter: pick two columns
-            st.markdown("**Scatter Explorer**")
-            c1, c2, c3 = st.columns(3)
-            x_col = c1.selectbox("X axis", num_cols, key='sc_x')
-            y_col = c2.selectbox("Y axis", num_cols, index=min(1, len(num_cols)-1), key='sc_y')
-            color_col = c3.selectbox("Color by (optional)", ['None'] + cat_cols, key='sc_c')
-            color_arg = None if color_col == 'None' else color_col
-            fig = px.scatter(df, x=x_col, y=y_col, color=color_arg,
-                             opacity=0.6, title=f'{x_col} vs {y_col}',
-                             color_discrete_sequence=COLOR_SEQ)
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+        st.dataframe(
+            df[selected_num]
+            .describe()
+            .to_frame(),
+            use_container_width=True
+        )
+
+    # --------------------------------------------------------
+    # CATEGORICAL ANALYSIS
+    # --------------------------------------------------------
+    st.markdown(
+        '<div class="section-header">Categorical Analysis</div>',
+        unsafe_allow_html=True
+    )
+
+    cat_cols = get_categorical_cols(df)
+
+    if len(cat_cols) > 0:
+
+        selected_cat = st.selectbox(
+            "Select Categorical Column",
+            cat_cols
+        )
+
+        counts = (
+            df[selected_cat]
+            .value_counts()
+            .reset_index()
+        )
+
+        counts.columns = [
+            selected_cat,
+            "Count"
+        ]
+
+        c1,c2 = st.columns(2)
+
+        with c1:
+
+            fig = px.bar(
+                counts.head(20),
+                x="Count",
+                y=selected_cat,
+                orientation="h",
+                title=f"{selected_cat} Distribution"
+            )
+
             fig.update_layout(**PLOTLY_LAYOUT)
-            st.plotly_chart(fig, use_container_width=True)
 
-    # ══════════════════════════════════════════════
-    # TAB 3: FEATURE ENGINEERING
-    # ══════════════════════════════════════════════
-    with tabs[2]:
-        st.markdown("""
-        <div class="section-header">
-          <div class="section-icon">⚙️</div>
-          <p class="section-title">FEATURE ENGINEERING</p>
-        </div>
-        """, unsafe_allow_html=True)
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
 
-        fe_applied = []
-        if 'crash_hour' in df.columns:
-            if 'crash_day_of_week' in df.columns:
-                df['is_weekend'] = df['crash_day_of_week'].apply(lambda x: 1 if x >= 5 else 0)
-                fe_applied.append("✅ **is_weekend** — weekend flag from crash_day_of_week")
-            df['is_night'] = df['crash_hour'].apply(lambda x: 1 if x >= 20 or x <= 5 else 0)
-            df['is_rush_hour'] = df['crash_hour'].apply(lambda x: 1 if (7 <= x <= 9) or (16 <= x <= 19) else 0)
-            df['time_of_day'] = pd.cut(df['crash_hour'],
-                                       bins=[-1, 5, 11, 17, 21, 24],
-                                       labels=['Night', 'Morning', 'Afternoon', 'Evening', 'Late Night'])
-            fe_applied.append("✅ **is_night** — night-time crash flag")
-            fe_applied.append("✅ **is_rush_hour** — rush hour flag (7-9am, 4-7pm)")
-            fe_applied.append("✅ **time_of_day** — categorical time bucket")
+        with c2:
 
-        if 'crash_date' in df.columns and pd.api.types.is_datetime64_any_dtype(df['crash_date']):
-            df['crash_month'] = df['crash_date'].dt.month
-            df['crash_year'] = df['crash_date'].dt.year
-            df['crash_quarter'] = df['crash_date'].dt.quarter
-            fe_applied.append("✅ **crash_month, crash_year, crash_quarter** — from crash_date")
+            fig = px.pie(
+                counts.head(10),
+                names=selected_cat,
+                values="Count",
+                hole=0.5,
+                title=f"{selected_cat} Share"
+            )
 
-        if fe_applied:
-            for feat in fe_applied:
-                st.markdown(feat)
+            fig.update_layout(**PLOTLY_LAYOUT)
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+    # --------------------------------------------------------
+    # CORRELATION MATRIX
+    # --------------------------------------------------------
+    st.markdown(
+        '<div class="section-header">Correlation Analysis</div>',
+        unsafe_allow_html=True
+    )
+
+    if len(numeric_cols) > 1:
+
+        corr = df[numeric_cols].corr()
+
+        fig = px.imshow(
+            corr,
+            text_auto=".2f",
+            color_continuous_scale="RdBu_r",
+            title="Correlation Heatmap"
+        )
+
+        fig.update_layout(
+            height=700,
+            **PLOTLY_LAYOUT
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
+
+    # --------------------------------------------------------
+    # SCATTER EXPLORER
+    # --------------------------------------------------------
+    st.markdown(
+        '<div class="section-header">Scatter Explorer</div>',
+        unsafe_allow_html=True
+    )
+
+    if len(numeric_cols) >= 2:
+
+        col1,col2,col3 = st.columns(3)
+
+        x_axis = col1.selectbox(
+            "X Axis",
+            numeric_cols,
+            key="x"
+        )
+
+        y_axis = col2.selectbox(
+            "Y Axis",
+            numeric_cols,
+            index=1,
+            key="y"
+        )
+
+        color_col = col3.selectbox(
+            "Color By",
+            ["None"] + cat_cols
+        )
+
+        color_arg = None if color_col == "None" else color_col
+
+        fig = px.scatter(
+            df,
+            x=x_axis,
+            y=y_axis,
+            color=color_arg,
+            title=f"{x_axis} vs {y_axis}",
+            opacity=0.7
+        )
+
+        fig.update_layout(**PLOTLY_LAYOUT)
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
+
+# ============================================================
+
+# ML HELPER FUNCTIONS
+
+# ============================================================
+
+def prepare_data(data):
+
+```
+data = data.copy()
+
+datetime_cols = data.select_dtypes(
+    include=["datetime64"]
+).columns
+
+if len(datetime_cols) > 0:
+    data = data.drop(columns=datetime_cols)
+
+for col in data.columns:
+
+    if data[col].dtype == "object":
+
+        data[col] = data[col].fillna(
+            data[col].mode()[0]
+        )
+
+        le = LabelEncoder()
+
+        data[col] = le.fit_transform(
+            data[col].astype(str)
+        )
+
+    else:
+
+        data[col] = data[col].fillna(
+            data[col].median()
+        )
+
+return data
+```
+
+def detect_leakage(X, y):
+
+```
+suspicious = []
+
+for col in X.columns:
+
+    try:
+
+        corr = np.corrcoef(
+            X[col],
+            y
+        )[0,1]
+
+        if abs(corr) > 0.98:
+
+            suspicious.append(
+                (col, round(corr,4))
+            )
+
+    except:
+        pass
+
+return suspicious
+```
+```python
+# ============================================================
+# MACHINE LEARNING TAB
+# ============================================================
+
+with tab4:
+
+    st.markdown(
+        '<div class="section-header">Machine Learning Models</div>',
+        unsafe_allow_html=True
+    )
+
+    if "engineered_df" in st.session_state:
+        ml_df = st.session_state["engineered_df"].copy()
+    else:
+        ml_df = df.copy()
+
+    ml_df = prepare_data(ml_df)
+
+    numeric_cols = get_numeric_cols(ml_df)
+
+    target = st.selectbox(
+        "Select Target Variable",
+        numeric_cols,
+        index=numeric_cols.index("injuries_total")
+        if "injuries_total" in numeric_cols
+        else 0
+    )
+
+    test_size = st.slider(
+        "Test Size %",
+        10,
+        40,
+        20
+    ) / 100
+
+    run_model = st.button(
+        "🚀 Train Models"
+    )
+
+    if run_model:
+
+        X = ml_df.drop(columns=[target])
+        y = ml_df[target]
+
+        # ----------------------------------------------------
+        # LEAKAGE DETECTION
+        # ----------------------------------------------------
+
+        suspicious = detect_leakage(X, y)
+
+        if len(suspicious) > 0:
+
+            st.error(
+                f"Potential leakage detected: {suspicious}"
+            )
+
+        # ----------------------------------------------------
+        # TRAIN TEST SPLIT
+        # ----------------------------------------------------
+
+        X_train, X_test, y_train, y_test = (
+            train_test_split(
+                X,
+                y,
+                test_size=test_size,
+                random_state=42
+            )
+        )
+
+        scaler = StandardScaler()
+
+        X_train_scaled = scaler.fit_transform(
+            X_train
+        )
+
+        X_test_scaled = scaler.transform(
+            X_test
+        )
+
+        # ----------------------------------------------------
+        # MODELS
+        # ----------------------------------------------------
+
+        models = {
+
+            "Linear Regression":
+                LinearRegression(),
+
+            "Ridge Regression":
+                Ridge(alpha=1.0),
+
+            "Decision Tree":
+                DecisionTreeRegressor(
+                    max_depth=6,
+                    random_state=42
+                ),
+
+            "Random Forest":
+                RandomForestRegressor(
+                    n_estimators=200,
+                    random_state=42
+                ),
+
+            "Gradient Boosting":
+                GradientBoostingRegressor(
+                    n_estimators=200,
+                    random_state=42
+                )
+        }
+
+        if XGB_AVAILABLE:
+
+            models["XGBoost"] = (
+                XGBRegressor(
+                    n_estimators=300,
+                    learning_rate=0.05,
+                    max_depth=6,
+                    random_state=42
+                )
+            )
+
+        # ----------------------------------------------------
+        # TRAINING
+        # ----------------------------------------------------
+
+        results = []
+
+        trained_models = {}
+
+        progress = st.progress(0)
+
+        for i, (name, model) in enumerate(
+            models.items()
+        ):
+
+            progress.progress(
+                (i + 1) / len(models)
+            )
+
+            if name in [
+                "Linear Regression",
+                "Ridge Regression"
+            ]:
+
+                model.fit(
+                    X_train_scaled,
+                    y_train
+                )
+
+                preds = model.predict(
+                    X_test_scaled
+                )
+
+                cv_score = (
+                    cross_val_score(
+                        model,
+                        scaler.fit_transform(X),
+                        y,
+                        cv=5,
+                        scoring="r2"
+                    )
+                    .mean()
+                )
+
+            else:
+
+                model.fit(
+                    X_train,
+                    y_train
+                )
+
+                preds = model.predict(
+                    X_test
+                )
+
+                cv_score = (
+                    cross_val_score(
+                        model,
+                        X,
+                        y,
+                        cv=5,
+                        scoring="r2"
+                    )
+                    .mean()
+                )
+
+            mae = mean_absolute_error(
+                y_test,
+                preds
+            )
+
+            rmse = np.sqrt(
+                mean_squared_error(
+                    y_test,
+                    preds
+                )
+            )
+
+            r2 = r2_score(
+                y_test,
+                preds
+            )
+
+            results.append({
+
+                "Model": name,
+
+                "MAE":
+                    round(mae,4),
+
+                "RMSE":
+                    round(rmse,4),
+
+                "R2":
+                    round(r2,4),
+
+                "CV_R2":
+                    round(cv_score,4)
+            })
+
+            trained_models[name] = (
+                model,
+                preds
+            )
+
+        progress.empty()
+
+        # ----------------------------------------------------
+        # RESULTS TABLE
+        # ----------------------------------------------------
+
+        results_df = (
+            pd.DataFrame(results)
+            .sort_values(
+                "R2",
+                ascending=False
+            )
+        )
+
+        st.session_state[
+            "results_df"
+        ] = results_df
+
+        st.dataframe(
+            results_df,
+            use_container_width=True
+        )
+
+        # ----------------------------------------------------
+        # BEST MODEL
+        # ----------------------------------------------------
+
+        best_model_name = (
+            results_df.iloc[0]["Model"]
+        )
+
+        st.success(
+            f"🏆 Best Model: {best_model_name}"
+        )
+
+        # ----------------------------------------------------
+        # LEADERBOARD CHART
+        # ----------------------------------------------------
+
+        fig = px.bar(
+
+            results_df,
+
+            x="Model",
+
+            y="R2",
+
+            color="Model",
+
+            title="Model Performance (R²)"
+        )
+
+        fig.update_layout(
+            **PLOTLY_LAYOUT
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
+
+        # ----------------------------------------------------
+        # ACTUAL VS PREDICTED
+        # ----------------------------------------------------
+
+        best_model = (
+            trained_models[
+                best_model_name
+            ][0]
+        )
+
+        if best_model_name in [
+            "Linear Regression",
+            "Ridge Regression"
+        ]:
+
+            best_preds = (
+                best_model.predict(
+                    X_test_scaled
+                )
+            )
+
         else:
-            st.markdown('<div class="alert-info">ℹ️ No crash_hour or crash_date columns found. Feature engineering skipped.</div>', unsafe_allow_html=True)
 
-        # Visualize engineered features
-        num_cols = get_numeric_cols(df)
-        if 'is_rush_hour' in df.columns:
-            c1, c2 = st.columns(2)
+            best_preds = (
+                best_model.predict(
+                    X_test
+                )
+            )
+
+        pred_df = pd.DataFrame({
+
+            "Actual":
+                y_test.values,
+
+            "Predicted":
+                best_preds
+        })
+
+        fig = px.scatter(
+
+            pred_df,
+
+            x="Actual",
+
+            y="Predicted",
+
+            trendline="ols",
+
+            title=
+            f"Actual vs Predicted ({best_model_name})"
+        )
+
+        fig.update_layout(
+            **PLOTLY_LAYOUT
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
+
+        # ----------------------------------------------------
+        # FEATURE IMPORTANCE
+        # ----------------------------------------------------
+
+        if hasattr(
+            best_model,
+            "feature_importances_"
+        ):
+
+            imp = pd.DataFrame({
+
+                "Feature":
+                    X.columns,
+
+                "Importance":
+                    best_model.feature_importances_
+            })
+
+            imp = (
+                imp.sort_values(
+                    "Importance",
+                    ascending=False
+                )
+                .head(15)
+            )
+
+            fig = px.bar(
+
+                imp,
+
+                x="Importance",
+
+                y="Feature",
+
+                orientation="h",
+
+                title=
+                "Top 15 Important Features"
+            )
+
+            fig.update_layout(
+                **PLOTLY_LAYOUT
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+        # ----------------------------------------------------
+        # HYPERPARAMETER TUNING
+        # ----------------------------------------------------
+
+        st.subheader(
+            "⚡ Hyperparameter Tuning"
+        )
+
+        if st.button(
+            "Tune Random Forest"
+        ):
+
+            params = {
+
+                "n_estimators":
+                    [100,200,300],
+
+                "max_depth":
+                    [4,6,8,None]
+            }
+
+            grid = GridSearchCV(
+
+                RandomForestRegressor(),
+
+                params,
+
+                cv=3,
+
+                scoring="r2",
+
+                n_jobs=-1
+            )
+
+            grid.fit(
+                X_train,
+                y_train
+            )
+
+            st.success(
+                f"Best Score: {grid.best_score_:.4f}"
+            )
+
+            st.write(
+                grid.best_params_
+            )
+
+        # ----------------------------------------------------
+        # EXPORT MODEL
+        # ----------------------------------------------------
+
+        st.subheader(
+            "💾 Export Best Model"
+        )
+
+        model_file = (
+            f"{best_model_name}.pkl"
+        )
+
+        joblib.dump(
+            best_model,
+            model_file
+        )
+
+        with open(
+            model_file,
+            "rb"
+        ) as f:
+
+            st.download_button(
+
+                label=
+                "Download Model",
+
+                data=f,
+
+                file_name=model_file,
+
+                mime=
+                "application/octet-stream"
+            )
+```
+```python
+# ============================================================
+# ADVANCED MODEL EXPLAINABILITY
+# PART 2B
+# ============================================================
+
+from sklearn.inspection import permutation_importance
+
+st.markdown(
+    '<div class="section-header">Advanced Model Explainability</div>',
+    unsafe_allow_html=True
+)
+
+if "results_df" in st.session_state:
+
+    st.subheader("🏆 Model Ranking")
+
+    ranking_df = (
+        st.session_state["results_df"]
+        .copy()
+        .reset_index(drop=True)
+    )
+
+    ranking_df.index = ranking_df.index + 1
+
+    st.dataframe(
+        ranking_df,
+        use_container_width=True
+    )
+
+    best_model_name = (
+        ranking_df.iloc[0]["Model"]
+    )
+
+    st.success(
+        f"Recommended Model: {best_model_name}"
+    )
+
+# ============================================================
+# PERMUTATION IMPORTANCE
+# ============================================================
+
+st.subheader(
+    "🔍 Permutation Feature Importance"
+)
+
+try:
+
+    if "engineered_df" in st.session_state:
+
+        explain_df = (
+            st.session_state["engineered_df"]
+            .copy()
+        )
+
+        explain_df = prepare_data(
+            explain_df
+        )
+
+        target_col = target
+
+        X_perm = explain_df.drop(
+            columns=[target_col]
+        )
+
+        y_perm = explain_df[target_col]
+
+        if best_model_name in [
+            "Linear Regression",
+            "Ridge Regression"
+        ]:
+
+            model_used = best_model
+
+            perm = permutation_importance(
+                model_used,
+                X_test_scaled,
+                y_test,
+                n_repeats=10,
+                random_state=42
+            )
+
+            imp_df = pd.DataFrame({
+
+                "Feature":
+                    X.columns,
+
+                "Importance":
+                    perm.importances_mean
+            })
+
+        else:
+
+            model_used = best_model
+
+            perm = permutation_importance(
+                model_used,
+                X_test,
+                y_test,
+                n_repeats=10,
+                random_state=42
+            )
+
+            imp_df = pd.DataFrame({
+
+                "Feature":
+                    X.columns,
+
+                "Importance":
+                    perm.importances_mean
+            })
+
+        imp_df = (
+            imp_df
+            .sort_values(
+                "Importance",
+                ascending=False
+            )
+            .head(15)
+        )
+
+        fig = px.bar(
+
+            imp_df,
+
+            x="Importance",
+
+            y="Feature",
+
+            orientation="h",
+
+            title="Top 15 Features (Permutation Importance)"
+        )
+
+        fig.update_layout(
+            **PLOTLY_LAYOUT
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
+
+except:
+    st.info(
+        "Train a model first to view feature importance."
+    )
+
+# ============================================================
+# RESIDUAL ANALYSIS
+# ============================================================
+
+st.markdown(
+    '<div class="section-header">Residual Analysis</div>',
+    unsafe_allow_html=True
+)
+
+try:
+
+    residuals = (
+        y_test -
+        best_preds
+    )
+
+    col1,col2 = st.columns(2)
+
+    with col1:
+
+        fig = px.histogram(
+
+            residuals,
+
+            nbins=40,
+
+            title=
+            "Residual Distribution"
+        )
+
+        fig.update_layout(
+            **PLOTLY_LAYOUT
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
+
+    with col2:
+
+        fig = px.scatter(
+
+            x=best_preds,
+
+            y=residuals,
+
+            labels={
+                "x":"Predicted",
+                "y":"Residual"
+            },
+
+            title=
+            "Residual vs Predicted"
+        )
+
+        fig.add_hline(
+            y=0,
+            line_dash="dash"
+        )
+
+        fig.update_layout(
+            **PLOTLY_LAYOUT
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
+
+except:
+    pass
+
+# ============================================================
+# ERROR ANALYSIS
+# ============================================================
+
+st.markdown(
+    '<div class="section-header">Prediction Error Analysis</div>',
+    unsafe_allow_html=True
+)
+
+try:
+
+    error_df = pd.DataFrame({
+
+        "Actual":
+            y_test,
+
+        "Predicted":
+            best_preds
+    })
+
+    error_df["Absolute_Error"] = (
+
+        abs(
+            error_df["Actual"]
+            -
+            error_df["Predicted"]
+        )
+    )
+
+    st.dataframe(
+        error_df.head(50),
+        use_container_width=True
+    )
+
+    fig = px.box(
+
+        error_df,
+
+        y="Absolute_Error",
+
+        title=
+        "Prediction Error Spread"
+    )
+
+    fig.update_layout(
+        **PLOTLY_LAYOUT
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
+
+except:
+    pass
+
+# ============================================================
+# PREDICTION INTERFACE
+# ============================================================
+
+st.markdown(
+    '<div class="section-header">Make New Prediction</div>',
+    unsafe_allow_html=True
+)
+
+try:
+
+    user_input = {}
+
+    cols = st.columns(3)
+
+    feature_list = list(
+        X.columns
+    )
+
+    for i, feature in enumerate(
+        feature_list
+    ):
+
+        user_input[feature] = (
+            cols[i % 3]
+            .number_input(
+                feature,
+                value=0.0
+            )
+        )
+
+    if st.button(
+        "Predict Injuries"
+    ):
+
+        input_df = pd.DataFrame(
+            [user_input]
+        )
+
+        if best_model_name in [
+            "Linear Regression",
+            "Ridge Regression"
+        ]:
+
+            pred = best_model.predict(
+                scaler.transform(
+                    input_df
+                )
+            )[0]
+
+        else:
+
+            pred = best_model.predict(
+                input_df
+            )[0]
+
+        st.success(
+            f"Predicted Injuries Total = {pred:.2f}"
+        )
+
+except:
+    st.warning(
+        "Train a model first."
+    )
+
+# ============================================================
+# DOWNLOAD PREDICTIONS
+# ============================================================
+
+st.markdown(
+    '<div class="section-header">Download Predictions</div>',
+    unsafe_allow_html=True
+)
+
+try:
+
+    prediction_export = pd.DataFrame({
+
+        "Actual":
+            y_test,
+
+        "Predicted":
+            best_preds,
+
+        "Residual":
+            y_test - best_preds
+    })
+
+    csv = (
+        prediction_export
+        .to_csv(index=False)
+        .encode("utf-8")
+    )
+
+    st.download_button(
+
+        label=
+        "📥 Download Prediction Results",
+
+        data=csv,
+
+        file_name=
+        "prediction_results.csv",
+
+        mime="text/csv"
+    )
+
+except:
+    pass
+```
+from sklearn.preprocessing import MinMaxScaler
+
+try:
+import tensorflow as tf
+
+```
+from tensorflow.keras.models import Sequential
+
+from tensorflow.keras.layers import (
+    Dense,
+    LSTM,
+    Dropout,
+    BatchNormalization
+)
+
+from tensorflow.keras.callbacks import (
+    EarlyStopping
+)
+
+TF_AVAILABLE = True
+```
+
+except:
+TF_AVAILABLE = False
+
+```python
+# ============================================================
+# DEEP LEARNING TAB
+# LSTM REGRESSION
+# ============================================================
+
+with tab5:
+
+    st.markdown(
+        '<div class="section-header">Deep Learning - LSTM Regression</div>',
+        unsafe_allow_html=True
+    )
+
+    if not TF_AVAILABLE:
+
+        st.error(
+            "TensorFlow not installed. Run: pip install tensorflow"
+        )
+
+    else:
+
+        dl_df = (
+            st.session_state
+            .get("engineered_df", df)
+            .copy()
+        )
+
+        dl_df = prepare_data(
+            dl_df
+        )
+
+        numeric_cols = get_numeric_cols(
+            dl_df
+        )
+
+        target_dl = st.selectbox(
+
+            "Select Target",
+
+            numeric_cols,
+
+            key="dl_target"
+        )
+
+        epochs = st.slider(
+
+            "Epochs",
+
+            10,
+
+            100,
+
+            30
+        )
+
+        batch_size = st.selectbox(
+
+            "Batch Size",
+
+            [16,32,64],
+
+            index=1
+        )
+
+        if st.button(
+            "🚀 Train LSTM"
+        ):
+
+            with st.spinner(
+                "Training Deep Learning Model..."
+            ):
+
+                X = dl_df.drop(
+                    columns=[target_dl]
+                )
+
+                y = dl_df[
+                    target_dl
+                ]
+
+                X_train, X_test, y_train, y_test = (
+                    train_test_split(
+                        X,
+                        y,
+                        test_size=0.20,
+                        random_state=42
+                    )
+                )
+
+                scaler_x = MinMaxScaler()
+
+                scaler_y = MinMaxScaler()
+
+                X_train_scaled = (
+                    scaler_x.fit_transform(
+                        X_train
+                    )
+                )
+
+                X_test_scaled = (
+                    scaler_x.transform(
+                        X_test
+                    )
+                )
+
+                y_train_scaled = (
+                    scaler_y.fit_transform(
+                        y_train
+                        .values
+                        .reshape(-1,1)
+                    )
+                )
+
+                X_train_lstm = (
+                    X_train_scaled
+                    .reshape(
+                        X_train_scaled.shape[0],
+                        1,
+                        X_train_scaled.shape[1]
+                    )
+                )
+
+                X_test_lstm = (
+                    X_test_scaled
+                    .reshape(
+                        X_test_scaled.shape[0],
+                        1,
+                        X_test_scaled.shape[1]
+                    )
+                )
+
+                model = Sequential([
+
+                    LSTM(
+                        64,
+                        return_sequences=True,
+                        input_shape=(
+                            1,
+                            X_train.shape[1]
+                        )
+                    ),
+
+                    Dropout(
+                        0.30
+                    ),
+
+                    BatchNormalization(),
+
+                    LSTM(
+                        32
+                    ),
+
+                    Dropout(
+                        0.30
+                    ),
+
+                    Dense(
+                        16,
+                        activation="relu"
+                    ),
+
+                    Dense(
+                        1
+                    )
+                ])
+
+                model.compile(
+
+                    optimizer="adam",
+
+                    loss="mse",
+
+                    metrics=["mae"]
+                )
+
+                early_stop = EarlyStopping(
+
+                    monitor="val_loss",
+
+                    patience=8,
+
+                    restore_best_weights=True
+                )
+
+                history = model.fit(
+
+                    X_train_lstm,
+
+                    y_train_scaled,
+
+                    epochs=epochs,
+
+                    batch_size=batch_size,
+
+                    validation_split=0.20,
+
+                    callbacks=[
+                        early_stop
+                    ],
+
+                    verbose=0
+                )
+
+                pred_scaled = (
+                    model.predict(
+                        X_test_lstm
+                    )
+                )
+
+                predictions = (
+                    scaler_y
+                    .inverse_transform(
+                        pred_scaled
+                    )
+                    .flatten()
+                )
+
+                mae = mean_absolute_error(
+                    y_test,
+                    predictions
+                )
+
+                rmse = np.sqrt(
+                    mean_squared_error(
+                        y_test,
+                        predictions
+                    )
+                )
+
+                r2 = r2_score(
+                    y_test,
+                    predictions
+                )
+
+                st.session_state[
+                    "lstm_model"
+                ] = model
+
+                st.session_state[
+                    "lstm_predictions"
+                ] = predictions
+
+                st.session_state[
+                    "lstm_y_test"
+                ] = y_test
+
+            st.success(
+                "LSTM Training Completed"
+            )
+
+            c1,c2,c3 = st.columns(3)
+
             with c1:
-                rh = df['is_rush_hour'].value_counts().rename({0: 'Non-Rush', 1: 'Rush Hour'})
-                fig = px.pie(values=rh.values, names=rh.index,
-                             title='Rush Hour vs Normal',
-                             color_discrete_sequence=['#f97316','#1e2330'])
-                fig.update_layout(**PLOTLY_LAYOUT)
-                st.plotly_chart(fig, use_container_width=True)
+                st.metric(
+                    "MAE",
+                    f"{mae:.4f}"
+                )
+
             with c2:
-                if 'crash_hour' in df.columns:
-                    fig2 = px.histogram(df, x='crash_hour', nbins=24,
-                                        title='Crash Distribution by Hour',
-                                        color_discrete_sequence=['#3b82f6'])
-                    fig2.update_layout(**PLOTLY_LAYOUT)
-                    st.plotly_chart(fig2, use_container_width=True)
-
-        st.markdown("""
-        <div class="section-header">
-          <div class="section-icon">🔍</div>
-          <p class="section-title">DATA LEAKAGE DETECTOR</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class="alert-warning">
-        ⚠️ <b>Why models give perfect R2?</b><br>
-        Common causes: (1) Target leakage — a feature that directly encodes the target, (2) ID columns included in features,
-        (3) Post-event features that wouldn't exist at prediction time, (4) Overfitting on tiny datasets, (5) Using training set metrics instead of test set.
-        <br><br>Use this detector to find suspicious features before training.
-        </div>
-        """, unsafe_allow_html=True)
-
-        data_check = drop_datetime_cols(df.copy())
-        # Convert Categorical dtype columns (e.g. from pd.cut) to string first
-        for col in data_check.columns:
-            if hasattr(data_check[col], 'cat'):
-                data_check[col] = data_check[col].astype(str)
-        for col in data_check.columns:
-            if data_check[col].dtype == 'object':
-                data_check[col] = LabelEncoder().fit_transform(data_check[col].fillna('missing').astype(str))
-            elif pd.api.types.is_numeric_dtype(data_check[col]):
-                data_check[col] = data_check[col].fillna(data_check[col].median())
-            else:
-                # Fallback for any other non-numeric type
-                data_check[col] = LabelEncoder().fit_transform(data_check[col].astype(str).fillna('missing'))
-
-        num_cols_check = get_numeric_cols(data_check)
-        if num_cols_check:
-            leak_target = st.selectbox("Select target to check for leakage", num_cols_check, key='leak_t')
-            X_check = data_check.drop(columns=[leak_target])
-            y_check = data_check[leak_target]
-            leaky = detect_leakage(X_check, y_check)
-            if leaky:
-                st.markdown(f'<div class="alert-danger">🚨 Potential leakage detected in {len(leaky)} feature(s):</div>', unsafe_allow_html=True)
-                for col, corr_val in leaky:
-                    st.markdown(f"- **{col}** (correlation = {corr_val}) — consider removing or investigating this feature")
-            else:
-                st.markdown('<div class="alert-success">✅ No obvious leakage detected (threshold: |r| > 0.98)</div>', unsafe_allow_html=True)
-
-            # Correlation with target bar
-            corr_with_target = X_check.corrwith(y_check).abs().sort_values(ascending=False).head(20)
-            fig = go.Figure(go.Bar(
-                x=corr_with_target.values,
-                y=corr_with_target.index,
-                orientation='h',
-                marker=dict(
-                    color=corr_with_target.values,
-                    colorscale=[[0,'#22c55e'],[0.7,'#eab308'],[1,'#ef4444']],
-                    showscale=True
+                st.metric(
+                    "RMSE",
+                    f"{rmse:.4f}"
                 )
-            ))
-            fig.update_layout(title='Feature Correlation with Target (absolute)', **PLOTLY_LAYOUT)
-            st.plotly_chart(fig, use_container_width=True)
 
-    # ══════════════════════════════════════════════
-    # SHARED ENCODING (for ML tabs)
-    # ══════════════════════════════════════════════
-    data_enc = drop_datetime_cols(df.copy())
-    # Convert Categorical dtype columns (e.g. from pd.cut) to string first
-    for col in data_enc.columns:
-        if hasattr(data_enc[col], 'cat'):
-            data_enc[col] = data_enc[col].astype(str)
-    for col in data_enc.columns:
-        if data_enc[col].dtype == 'object':
-            data_enc[col] = data_enc[col].fillna(data_enc[col].mode()[0] if not data_enc[col].mode().empty else 'missing')
-        elif pd.api.types.is_numeric_dtype(data_enc[col]):
-            data_enc[col] = data_enc[col].fillna(data_enc[col].median())
+            with c3:
+                st.metric(
+                    "R²",
+                    f"{r2:.4f}"
+                )
+
+            # -----------------------------------
+            # TRAINING HISTORY
+            # -----------------------------------
+
+            st.subheader(
+                "Training History"
+            )
+
+            history_df = pd.DataFrame({
+
+                "Epoch":
+                    range(
+                        1,
+                        len(
+                            history.history[
+                                "loss"
+                            ]
+                        ) + 1
+                    ),
+
+                "Training Loss":
+                    history.history[
+                        "loss"
+                    ],
+
+                "Validation Loss":
+                    history.history[
+                        "val_loss"
+                    ]
+            })
+
+            fig = px.line(
+
+                history_df,
+
+                x="Epoch",
+
+                y=[
+                    "Training Loss",
+                    "Validation Loss"
+                ],
+
+                title=
+                "Training vs Validation Loss"
+            )
+
+            fig.update_layout(
+                **PLOTLY_LAYOUT
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+            # -----------------------------------
+            # ACTUAL VS PREDICTED
+            # -----------------------------------
+
+            st.subheader(
+                "Actual vs Predicted"
+            )
+
+            pred_df = pd.DataFrame({
+
+                "Actual":
+                    y_test.values,
+
+                "Predicted":
+                    predictions
+            })
+
+            fig = px.scatter(
+
+                pred_df,
+
+                x="Actual",
+
+                y="Predicted",
+
+                trendline="ols",
+
+                title=
+                "LSTM Actual vs Predicted"
+            )
+
+            fig.update_layout(
+                **PLOTLY_LAYOUT
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+            # -----------------------------------
+            # FIRST 100 OBSERVATIONS
+            # -----------------------------------
+
+            st.subheader(
+                "Prediction Sequence"
+            )
+
+            compare_df = pd.DataFrame({
+
+                "Actual":
+                    y_test.values[:100],
+
+                "Predicted":
+                    predictions[:100]
+            })
+
+            fig = px.line(
+
+                compare_df,
+
+                title=
+                "First 100 Predictions"
+            )
+
+            fig.update_layout(
+                **PLOTLY_LAYOUT
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+            # -----------------------------------
+            # EXPORT PREDICTIONS
+            # -----------------------------------
+
+            csv = (
+                pred_df
+                .to_csv(
+                    index=False
+                )
+                .encode(
+                    "utf-8"
+                )
+            )
+
+            st.download_button(
+
+                label=
+                "📥 Download LSTM Predictions",
+
+                data=csv,
+
+                file_name=
+                "lstm_predictions.csv",
+
+                mime="text/csv"
+            )
+```
+```python
+# ============================================================
+# FORECASTING TAB
+# SARIMA TIME SERIES FORECASTING
+# ============================================================
+
+with tab6:
+
+    st.markdown(
+        '<div class="section-header">Time Series Forecasting (SARIMA)</div>',
+        unsafe_allow_html=True
+    )
+
+    if not SARIMA_AVAILABLE:
+
+        st.error(
+            "statsmodels not installed. Run: pip install statsmodels"
+        )
+
+    elif "crash_date" not in df.columns:
+
+        st.warning(
+            "Dataset must contain a crash_date column."
+        )
+
+    else:
+
+        if not pd.api.types.is_datetime64_any_dtype(
+            df["crash_date"]
+        ):
+            st.warning(
+                "crash_date must be datetime format."
+            )
+
         else:
-            # Fallback for any other non-numeric type
-            data_enc[col] = data_enc[col].astype(str).fillna('missing')
 
-    for col in data_enc.select_dtypes(include='object').columns:
-        data_enc[col] = LabelEncoder().fit_transform(data_enc[col].astype(str))
+            numeric_cols = get_numeric_cols(df)
 
-    model_num_cols = get_numeric_cols(data_enc)
+            target_ts = st.selectbox(
+                "Forecast Variable",
+                numeric_cols,
+                index=numeric_cols.index("injuries_total")
+                if "injuries_total" in numeric_cols
+                else 0,
+                key="forecast_target"
+            )
 
-    # ══════════════════════════════════════════════
-    # TAB 4: ML MODELS
-    # ══════════════════════════════════════════════
-    with tabs[3]:
-        ml_task = st.radio("Task Type", ['Regression', 'Classification'], horizontal=True)
+            forecast_periods = st.slider(
+                "Future Forecast Periods",
+                3,
+                24,
+                12
+            )
 
-        st.markdown("""
-        <div class="alert-info">
-        💡 <b>Honest Evaluation</b>: Models are evaluated using both held-out test set AND
-        5-fold cross-validation to prevent inflated metrics from data leakage or lucky splits.
-        If CV score differs greatly from test score, the model may be overfitting.
-        </div>
-        """, unsafe_allow_html=True)
+            frequency = st.selectbox(
+                "Aggregation Frequency",
+                [
+                    "D",
+                    "W",
+                    "M"
+                ]
+            )
 
-        # ── Sidebar controls ──
-        with st.expander("⚙️ Training Settings", expanded=True):
-            test_size = st.slider("Test set size (%)", 10, 40, 25, 5) / 100
-            use_cv = st.checkbox("Enable 5-fold Cross Validation", value=True)
-            drop_id_cols = st.checkbox("Auto-drop ID-like columns", value=True)
+            if st.button(
+                "🚀 Run Forecast"
+            ):
 
-        # Optionally drop ID columns
-        data_ml = data_enc.copy()
-        if drop_id_cols:
-            id_candidates = [c for c in data_ml.columns
-                             if ('id' in c.lower() or 'index' in c.lower() or 'no' == c.lower())]
-            if id_candidates:
-                data_ml = data_ml.drop(columns=id_candidates)
-                st.markdown(f'<div class="alert-warning">🗑️ Auto-dropped columns: {", ".join(id_candidates)}</div>', unsafe_allow_html=True)
+                with st.spinner(
+                    "Training SARIMA Model..."
+                ):
 
-        ml_num_cols = get_numeric_cols(data_ml)
+                    ts_df = (
+                        df[
+                            [
+                                "crash_date",
+                                target_ts
+                            ]
+                        ]
+                        .copy()
+                    )
 
-        if ml_task == 'Regression':
-            st.markdown("""
-            <div class="section-header">
-              <div class="section-icon">📈</div>
-              <p class="section-title">REGRESSION MODELS</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-            target = st.selectbox("Select target variable", ml_num_cols, key='reg_target')
-
-            if st.button("🚀 Train Regression Models"):
-                X = data_ml.drop(columns=[target])
-                y = data_ml[target]
-
-                # Leakage pre-check
-                leaky = detect_leakage(X, y)
-                if leaky:
-                    st.markdown(f'<div class="alert-danger">🚨 WARNING: Potential leakage in {[c for c,_ in leaky]}. Results may be unreliable.</div>', unsafe_allow_html=True)
-
-                X_train, X_test, y_train, y_test = train_test_split(
-                    X, y, test_size=test_size, random_state=42
-                )
-
-                models = {
-                    'Linear Regression (Ridge)': Ridge(alpha=1.0),
-                    'Decision Tree': DecisionTreeRegressor(max_depth=6, random_state=42),
-                    'Random Forest': RandomForestRegressor(n_estimators=100, max_depth=8, random_state=42),
-                    'Gradient Boosting': GradientBoostingRegressor(n_estimators=100, max_depth=4, random_state=42),
-                }
-                if XGBOOST_AVAILABLE:
-                    models['XGBoost'] = XGBRegressor(n_estimators=100, max_depth=4, random_state=42, verbosity=0)
-
-                results = []
-                trained_models = {}
-
-                progress = st.progress(0, text="Training models...")
-                for i, (name, model) in enumerate(models.items()):
-                    progress.progress((i+1)/len(models), text=f"Training {name}...")
-                    model.fit(X_train, y_train)
-                    preds = model.predict(X_test)
-
-                    mae  = mean_absolute_error(y_test, preds)
-                    rmse = np.sqrt(mean_squared_error(y_test, preds))
-                    r2   = r2_score(y_test, preds)
-
-                    cv_r2 = None
-                    if use_cv:
-                        cv_r2_scores = cv_scores(model, X, y, task='regression')
-                        cv_r2 = round(cv_r2_scores.mean(), 4)
-
-                    results.append({
-                        'Model': name,
-                        'Test MAE': round(mae, 4),
-                        'Test RMSE': round(rmse, 4),
-                        'Test R2': round(r2, 4),
-                        'CV R2 (mean)': cv_r2 if cv_r2 else 'N/A',
-                        'Overfitting?': '⚠️ Likely' if (cv_r2 and abs(r2 - cv_r2) > 0.1) else '✅ OK'
-                    })
-                    trained_models[name] = (model, preds)
-
-                progress.empty()
-
-                results_df = pd.DataFrame(results).sort_values('Test R2', ascending=False)
-                st.session_state['reg_results'] = results_df
-                st.session_state['reg_models'] = trained_models
-                st.session_state['reg_X_test'] = X_test
-                st.session_state['reg_y_test'] = y_test
-                st.session_state['reg_feature_names'] = list(X.columns)
-
-                # Leaderboard
-                st.markdown("### 🏆 Model Leaderboard")
-                for rank, (_, row) in enumerate(results_df.iterrows()):
-                    rank_icon = "🥇" if rank == 0 else f"#{rank+1}"
-                    r2_cls = r2_label(row['Test R2'])
-                    st.markdown(f"""
-                    <div class="leaderboard-row">
-                      <span class="rank {'gold' if rank==0 else ''}">{rank_icon}</span>
-                      <span class="model-name">{row['Model']}</span>
-                      <span class="score-pill {r2_cls}">R2 {row['Test R2']}</span>
-                      <span class="score-pill">MAE {row['Test MAE']}</span>
-                      <span class="score-pill">RMSE {row['Test RMSE']}</span>
-                      <span class="score-pill">CV {row['CV R2 (mean)']}</span>
-                      <span class="score-pill">{row['Overfitting?']}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                # Charts
-                c1, c2 = st.columns(2)
-                with c1:
-                    fig = px.bar(results_df, x='Model', y='Test R2',
-                                 color='Model', title='Test R2 Score by Model',
-                                 color_discrete_sequence=COLOR_SEQ)
-                    fig.add_hline(y=0.8, line_dash='dash', line_color='#22c55e',
-                                  annotation_text='Good threshold (0.8)')
-                    fig.add_hline(y=0.5, line_dash='dash', line_color='#eab308',
-                                  annotation_text='Moderate (0.5)')
-                    fig.update_layout(**PLOTLY_LAYOUT)
-                    st.plotly_chart(fig, use_container_width=True)
-                with c2:
-                    if use_cv:
-                        cv_df = results_df[results_df['CV R2 (mean)'] != 'N/A'].copy()
-                        cv_df['Test R2'] = cv_df['Test R2'].astype(float)
-                        cv_df['CV R2 (mean)'] = cv_df['CV R2 (mean)'].astype(float)
-                        fig2 = go.Figure()
-                        fig2.add_bar(name='Test R2', x=cv_df['Model'], y=cv_df['Test R2'],
-                                     marker_color='#f97316')
-                        fig2.add_bar(name='CV R2', x=cv_df['Model'], y=cv_df['CV R2 (mean)'],
-                                     marker_color='#3b82f6')
-                        fig2.update_layout(barmode='group',
-                                           title='Test R2 vs Cross-Val R2 (gap = overfitting)',
-                                           **PLOTLY_LAYOUT)
-                        st.plotly_chart(fig2, use_container_width=True)
-
-                # Actual vs Predicted for best model
-                best_name = results_df.iloc[0]['Model']
-                best_preds = trained_models[best_name][1]
-                pred_df = pd.DataFrame({'Actual': y_test.values, 'Predicted': best_preds})
-                fig_ap = px.scatter(pred_df, x='Actual', y='Predicted',
-                                    title=f'Actual vs Predicted — {best_name}',
-                                    opacity=0.5, color_discrete_sequence=['#f97316'])
-                mn, mx = pred_df.min().min(), pred_df.max().max()
-                fig_ap.add_shape(type='line', x0=mn, y0=mn, x1=mx, y1=mx,
-                                 line=dict(color='#3b82f6', dash='dash'))
-                fig_ap.update_layout(**PLOTLY_LAYOUT)
-                st.plotly_chart(fig_ap, use_container_width=True)
-
-                # Feature importance (best model if available)
-                best_model_obj = trained_models[best_name][0]
-                if hasattr(best_model_obj, 'feature_importances_'):
-                    feat_imp = pd.DataFrame({
-                        'Feature': st.session_state['reg_feature_names'],
-                        'Importance': best_model_obj.feature_importances_
-                    }).sort_values('Importance', ascending=False).head(15)
-                    fig_fi = px.bar(feat_imp, x='Importance', y='Feature', orientation='h',
-                                    title=f'Feature Importance — {best_name}',
-                                    color='Importance',
-                                    color_continuous_scale=[[0,'#1e2330'],[1,'#f97316']])
-                    fig_fi.update_layout(**PLOTLY_LAYOUT)
-                    st.plotly_chart(fig_fi, use_container_width=True)
-
-        else:  # Classification
-            st.markdown("""
-            <div class="section-header">
-              <div class="section-icon">🚦</div>
-              <p class="section-title">CLASSIFICATION MODELS</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-            target = st.selectbox("Select target variable", data_ml.columns.tolist(), key='clf_target')
-
-            if st.button("🚀 Train Classification Models"):
-                X = data_ml.drop(columns=[target])
-                y = data_ml[target]
-
-                if y.nunique() > 20:
-                    st.markdown('<div class="alert-warning">⚠️ Target has many unique values. Consider using Regression.</div>', unsafe_allow_html=True)
-
-                X_train, X_test, y_train, y_test = train_test_split(
-                    X, y, test_size=test_size, random_state=42
-                )
-
-                models = {
-                    'Logistic Regression': LogisticRegression(max_iter=5000, C=0.1, solver='liblinear'),
-                    'Decision Tree (depth=6)': DecisionTreeClassifier(max_depth=6, random_state=42),
-                    'Random Forest': RandomForestClassifier(n_estimators=100, max_depth=8, random_state=42),
-                    'Gradient Boosting': GradientBoostingClassifier(n_estimators=100, max_depth=4, random_state=42),
-                }
-                if XGBOOST_AVAILABLE:
-                    models['XGBoost'] = XGBClassifier(n_estimators=100, max_depth=4, random_state=42, verbosity=0, eval_metric='logloss')
-
-                results = []
-                trained_clf = {}
-
-                progress = st.progress(0)
-                for i, (name, model) in enumerate(models.items()):
-                    progress.progress((i+1)/len(models), text=f"Training {name}...")
-                    model.fit(X_train, y_train)
-                    preds = model.predict(X_test)
-                    acc  = accuracy_score(y_test, preds)
-                    prec = precision_score(y_test, preds, average='weighted', zero_division=0)
-                    rec  = recall_score(y_test, preds, average='weighted', zero_division=0)
-                    f1   = f1_score(y_test, preds, average='weighted', zero_division=0)
-
-                    cv_acc = None
-                    if use_cv:
-                        cv_acc_scores = cv_scores(model, X, y, task='classification')
-                        cv_acc = round(cv_acc_scores.mean(), 4)
-
-                    results.append({
-                        'Model': name,
-                        'Test Acc': round(acc, 4),
-                        'Precision': round(prec, 4),
-                        'Recall': round(rec, 4),
-                        'F1': round(f1, 4),
-                        'CV Acc': cv_acc if cv_acc else 'N/A',
-                        'Overfitting?': '⚠️ Likely' if (cv_acc and abs(acc - cv_acc) > 0.05) else '✅ OK'
-                    })
-                    trained_clf[name] = (model, preds)
-
-                progress.empty()
-                results_df = pd.DataFrame(results).sort_values('F1', ascending=False)
-
-                # Leaderboard
-                for rank, (_, row) in enumerate(results_df.iterrows()):
-                    rank_icon = "🥇" if rank == 0 else f"#{rank+1}"
-                    acc_cls = 'good' if row['Test Acc'] >= 0.8 else ('warn' if row['Test Acc'] >= 0.6 else 'bad')
-                    st.markdown(f"""
-                    <div class="leaderboard-row">
-                      <span class="rank {'gold' if rank==0 else ''}">{rank_icon}</span>
-                      <span class="model-name">{row['Model']}</span>
-                      <span class="score-pill {acc_cls}">Acc {row['Test Acc']}</span>
-                      <span class="score-pill">F1 {row['F1']}</span>
-                      <span class="score-pill">Prec {row['Precision']}</span>
-                      <span class="score-pill">Rec {row['Recall']}</span>
-                      <span class="score-pill">CV {row['CV Acc']}</span>
-                      <span class="score-pill">{row['Overfitting?']}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                # Metric comparison chart
-                plot_df = results_df[['Model','Test Acc','Precision','Recall','F1']].melt(id_vars='Model')
-                fig = px.bar(plot_df, x='Model', y='value', color='variable', barmode='group',
-                             title='Classification Metrics Comparison',
-                             color_discrete_sequence=COLOR_SEQ)
-                fig.update_layout(**PLOTLY_LAYOUT)
-                st.plotly_chart(fig, use_container_width=True)
-
-                # Confusion matrix for best
-                best_name = results_df.iloc[0]['Model']
-                best_preds = trained_clf[best_name][1]
-                cm = confusion_matrix(y_test, best_preds)
-                labels = [str(l) for l in sorted(y_test.unique())]
-                fig_cm = ff.create_annotated_heatmap(
-                    z=cm, x=labels, y=labels, colorscale='Oranges'
-                )
-                fig_cm.update_layout(
-                    title=f'Confusion Matrix — {best_name}',
-                    xaxis_title='Predicted', yaxis_title='Actual',
-                    **PLOTLY_LAYOUT
-                )
-                st.plotly_chart(fig_cm, use_container_width=True)
-
-    # ══════════════════════════════════════════════
-    # TAB 5: DEEP LEARNING
-    # ══════════════════════════════════════════════
-    with tabs[4]:
-        if not TF_AVAILABLE:
-            st.markdown('<div class="alert-danger">❌ TensorFlow not installed. Install with: pip install tensorflow</div>', unsafe_allow_html=True)
-        else:
-            dl_task = st.radio("Task", ['LSTM Regression', 'LSTM Classification'], horizontal=True)
-
-            st.markdown("""
-            <div class="alert-info">
-            💡 LSTM models are trained with early stopping and validation split to prevent overfitting.
-            </div>
-            """, unsafe_allow_html=True)
-
-            if dl_task == 'LSTM Regression':
-                target = st.selectbox("Target", model_num_cols, key='dl_reg_t')
-                epochs = st.slider("Max Epochs", 10, 100, 30, 10)
-
-                if st.button("Train LSTM Regressor"):
-                    with st.spinner("Training LSTM..."):
-                        X = data_enc.drop(columns=[target]).values
-                        y = data_enc[target].values
-                        X_train, X_test, y_train, y_test = train_test_split(
-                            X, y, test_size=0.25, random_state=42
+                    ts_df = (
+                        ts_df
+                        .set_index(
+                            "crash_date"
                         )
-                        scX = MinMaxScaler(); scy = MinMaxScaler()
-                        X_tr = scX.fit_transform(X_train); X_te = scX.transform(X_test)
-                        y_tr = scy.fit_transform(y_train.reshape(-1,1))
+                    )
 
-                        X_tr_l = X_tr.reshape(X_tr.shape[0], 1, X_tr.shape[1])
-                        X_te_l = X_te.reshape(X_te.shape[0], 1, X_te.shape[1])
-
-                        model = Sequential([
-                            LSTM(64, return_sequences=True, input_shape=(1, X_tr.shape[1])),
-                            Dropout(0.3), BatchNormalization(),
-                            LSTM(32), Dropout(0.3),
-                            Dense(16, activation='relu'), Dense(1)
-                        ])
-                        model.compile(optimizer='adam', loss='mse')
-                        history = model.fit(
-                            X_tr_l, y_tr, epochs=epochs, batch_size=32,
-                            validation_split=0.2, callbacks=[EarlyStopping(patience=8, restore_best_weights=True)],
-                            verbose=0
+                    ts_series = (
+                        ts_df[target_ts]
+                        .resample(
+                            frequency
                         )
-                        preds_sc = model.predict(X_te_l)
-                        preds = scy.inverse_transform(preds_sc).flatten()
+                        .sum()
+                        .dropna()
+                    )
 
-                    st.markdown('<div class="alert-success">✅ LSTM Training Complete</div>', unsafe_allow_html=True)
-                    c1,c2,c3 = st.columns(3)
-                    c1.metric("MAE", f"{mean_absolute_error(y_test, preds):.4f}")
-                    c2.metric("RMSE", f"{np.sqrt(mean_squared_error(y_test, preds)):.4f}")
-                    c3.metric("R2", f"{r2_score(y_test, preds):.4f}")
+                    if len(ts_series) < 12:
 
-                    hist_df = pd.DataFrame({'Epoch': range(1, len(history.history['loss'])+1),
-                                            'Train Loss': history.history['loss'],
-                                            'Val Loss': history.history['val_loss']})
-                    fig = px.line(hist_df, x='Epoch', y=['Train Loss','Val Loss'],
-                                  title='Training History', color_discrete_sequence=['#f97316','#3b82f6'])
-                    fig.update_layout(**PLOTLY_LAYOUT)
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    pred_df = pd.DataFrame({'Actual': y_test[:200], 'Predicted': preds[:200]})
-                    fig2 = px.line(pred_df, title='Actual vs Predicted (first 200)',
-                                   color_discrete_sequence=['#22c55e','#f97316'])
-                    fig2.update_layout(**PLOTLY_LAYOUT)
-                    st.plotly_chart(fig2, use_container_width=True)
-
-            else:  # LSTM Classification
-                target = st.selectbox("Target", data_enc.columns.tolist(), key='dl_clf_t')
-                epochs = st.slider("Max Epochs", 10, 100, 30, 10)
-
-                if st.button("Train LSTM Classifier"):
-                    with st.spinner("Training LSTM..."):
-                        X = data_enc.drop(columns=[target]).values
-                        y_raw = data_enc[target].values
-                        ul = np.unique(y_raw)
-                        lmap = {v:i for i,v in enumerate(ul)}
-                        y = np.array([lmap[v] for v in y_raw])
-                        nc = len(ul)
-
-                        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
-                        scX = MinMaxScaler()
-                        X_tr = scX.fit_transform(X_train); X_te = scX.transform(X_test)
-                        X_tr_l = X_tr.reshape(X_tr.shape[0],1,X_tr.shape[1])
-                        X_te_l = X_te.reshape(X_te.shape[0],1,X_te.shape[1])
-
-                        out_u = 1 if nc==2 else nc
-                        loss_fn = 'binary_crossentropy' if nc==2 else 'sparse_categorical_crossentropy'
-                        out_act = 'sigmoid' if nc==2 else 'softmax'
-
-                        model = Sequential([
-                            LSTM(64, return_sequences=True, input_shape=(1, X_tr.shape[1])),
-                            Dropout(0.3), BatchNormalization(),
-                            LSTM(32), Dropout(0.3),
-                            Dense(16, activation='relu'),
-                            Dense(out_u, activation=out_act)
-                        ])
-                        model.compile(optimizer='adam', loss=loss_fn, metrics=['accuracy'])
-                        history = model.fit(
-                            X_tr_l, y_train, epochs=epochs, batch_size=32,
-                            validation_split=0.2, callbacks=[EarlyStopping(patience=8, restore_best_weights=True)],
-                            verbose=0
+                        st.error(
+                            "Need at least 12 time periods for forecasting."
                         )
-                        prob = model.predict(X_te_l)
-                        preds = (prob > 0.5).astype(int).flatten() if nc==2 else np.argmax(prob, axis=1)
 
-                    st.markdown('<div class="alert-success">✅ LSTM Classification Complete</div>', unsafe_allow_html=True)
-                    st.metric("Accuracy", f"{accuracy_score(y_test, preds):.4f}")
-
-                    hist_df = pd.DataFrame({'Epoch': range(1, len(history.history['loss'])+1),
-                                            'Train Loss': history.history['loss'],
-                                            'Val Loss': history.history['val_loss']})
-                    fig = px.line(hist_df, x='Epoch', y=['Train Loss','Val Loss'], title='Training History',
-                                  color_discrete_sequence=['#f97316','#3b82f6'])
-                    fig.update_layout(**PLOTLY_LAYOUT)
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    cm = confusion_matrix(y_test, preds)
-                    labels = [str(i) for i in range(cm.shape[0])]
-                    fig_cm = ff.create_annotated_heatmap(z=cm, x=labels, y=labels, colorscale='Oranges')
-                    fig_cm.update_layout(title='Confusion Matrix', **PLOTLY_LAYOUT)
-                    st.plotly_chart(fig_cm, use_container_width=True)
-
-    # ══════════════════════════════════════════════
-    # TAB 6: TIME SERIES
-    # ══════════════════════════════════════════════
-    with tabs[5]:
-        if not STATSMODELS_AVAILABLE:
-            st.markdown('<div class="alert-danger">❌ statsmodels not installed.</div>', unsafe_allow_html=True)
-        elif 'crash_date' not in df.columns or not pd.api.types.is_datetime64_any_dtype(df['crash_date']):
-            st.markdown('<div class="alert-danger">❌ Dataset needs a parseable crash_date column.</div>', unsafe_allow_html=True)
-        else:
-            num_cols_ts = get_numeric_cols(df)
-            ts_target = st.selectbox("Time series target", num_cols_ts, key='ts_t')
-            resample_freq = st.selectbox("Aggregation frequency", ['ME', 'W', 'D'], key='ts_freq')
-
-            if st.button("Run SARIMA Forecast"):
-                with st.spinner("Fitting SARIMA..."):
-                    ts_df = df[['crash_date', ts_target]].copy().set_index('crash_date')
-                    ts_data = ts_df[ts_target].resample(resample_freq).sum().dropna()
-
-                    if len(ts_data) < 12:
-                        st.markdown('<div class="alert-danger">❌ Need at least 12 observations for SARIMA.</div>', unsafe_allow_html=True)
                     else:
-                        split = int(len(ts_data) * 0.7)
-                        train_ts = ts_data.iloc[:split]
-                        test_ts = ts_data.iloc[split:]
+
+                        split_idx = int(
+                            len(ts_series)
+                            * 0.8
+                        )
+
+                        train = (
+                            ts_series.iloc[
+                                :split_idx
+                            ]
+                        )
+
+                        test = (
+                            ts_series.iloc[
+                                split_idx:
+                            ]
+                        )
 
                         try:
-                            sarima = SARIMAX(train_ts, order=(1,1,1),
-                                             seasonal_order=(1,1,1,12) if len(train_ts)>=24 else (0,0,0,0),
-                                             enforce_stationarity=False, enforce_invertibility=False)
-                            fitted = sarima.fit(disp=False)
-                            forecast = fitted.forecast(steps=len(test_ts))
 
-                            mae  = mean_absolute_error(test_ts, forecast)
-                            rmse = np.sqrt(mean_squared_error(test_ts, forecast))
-                            r2   = r2_score(test_ts, forecast)
+                            model = SARIMAX(
 
-                            st.markdown('<div class="alert-success">✅ Forecasting Completed</div>', unsafe_allow_html=True)
+                                train,
+
+                                order=(1,1,1),
+
+                                seasonal_order=(
+                                    1,
+                                    1,
+                                    1,
+                                    12
+                                ),
+
+                                enforce_stationarity=False,
+
+                                enforce_invertibility=False
+                            )
+
+                            fitted_model = (
+                                model.fit(
+                                    disp=False
+                                )
+                            )
+
+                            test_forecast = (
+                                fitted_model.forecast(
+                                    steps=len(test)
+                                )
+                            )
+
+                            mae = (
+                                mean_absolute_error(
+                                    test,
+                                    test_forecast
+                                )
+                            )
+
+                            rmse = np.sqrt(
+                                mean_squared_error(
+                                    test,
+                                    test_forecast
+                                )
+                            )
+
+                            r2 = (
+                                r2_score(
+                                    test,
+                                    test_forecast
+                                )
+                            )
+
+                            future_forecast = (
+                                fitted_model.forecast(
+                                    steps=forecast_periods
+                                )
+                            )
+
+                            st.success(
+                                "Forecast Completed"
+                            )
+
                             c1,c2,c3 = st.columns(3)
-                            c1.metric("MAE", f"{mae:.4f}")
-                            c2.metric("RMSE", f"{rmse:.4f}")
-                            c3.metric("R2", f"{r2:.4f}")
 
-                            # Full series plot
-                            full_df = pd.DataFrame({
-                                'Date': list(train_ts.index) + list(test_ts.index),
-                                'Value': list(train_ts.values) + list(test_ts.values),
-                                'Type': ['Train']*len(train_ts) + ['Actual Test']*len(test_ts)
+                            with c1:
+                                st.metric(
+                                    "MAE",
+                                    f"{mae:.2f}"
+                                )
+
+                            with c2:
+                                st.metric(
+                                    "RMSE",
+                                    f"{rmse:.2f}"
+                                )
+
+                            with c3:
+                                st.metric(
+                                    "R²",
+                                    f"{r2:.2f}"
+                                )
+
+                            # ---------------------------------
+                            # HISTORICAL TREND
+                            # ---------------------------------
+
+                            st.subheader(
+                                "Historical Trend"
+                            )
+
+                            fig = px.line(
+
+                                ts_series,
+
+                                title=
+                                f"{target_ts} Trend Over Time"
+                            )
+
+                            fig.update_layout(
+                                **PLOTLY_LAYOUT
+                            )
+
+                            st.plotly_chart(
+                                fig,
+                                use_container_width=True
+                            )
+
+                            # ---------------------------------
+                            # ACTUAL VS TEST FORECAST
+                            # ---------------------------------
+
+                            st.subheader(
+                                "Model Validation"
+                            )
+
+                            validation_df = pd.DataFrame({
+
+                                "Actual":
+                                    test,
+
+                                "Forecast":
+                                    test_forecast
                             })
-                            fore_df = pd.DataFrame({'Date': test_ts.index, 'Forecast': forecast.values})
 
-                            fig = go.Figure()
-                            fig.add_trace(go.Scatter(x=train_ts.index, y=train_ts.values, name='Train',
-                                                     line=dict(color='#3b82f6')))
-                            fig.add_trace(go.Scatter(x=test_ts.index, y=test_ts.values, name='Actual',
-                                                     line=dict(color='#22c55e')))
-                            fig.add_trace(go.Scatter(x=test_ts.index, y=forecast.values, name='Forecast',
-                                                     line=dict(color='#f97316', dash='dash')))
-                            fig.update_layout(title='SARIMA Forecast vs Actual', **PLOTLY_LAYOUT)
-                            st.plotly_chart(fig, use_container_width=True)
+                            fig = px.line(
 
-                            # Residuals
-                            residuals = test_ts.values - forecast.values
-                            fig_res = px.histogram(x=residuals, nbins=30, title='Forecast Residuals',
-                                                   color_discrete_sequence=['#a855f7'])
-                            fig_res.update_layout(**PLOTLY_LAYOUT)
-                            st.plotly_chart(fig_res, use_container_width=True)
+                                validation_df,
+
+                                title=
+                                "Actual vs Forecast"
+                            )
+
+                            fig.update_layout(
+                                **PLOTLY_LAYOUT
+                            )
+
+                            st.plotly_chart(
+                                fig,
+                                use_container_width=True
+                            )
+
+                            # ---------------------------------
+                            # FUTURE FORECAST
+                            # ---------------------------------
+
+                            st.subheader(
+                                "Future Forecast"
+                            )
+
+                            future_dates = pd.date_range(
+
+                                start=
+                                ts_series.index[-1],
+
+                                periods=
+                                forecast_periods + 1,
+
+                                freq=
+                                frequency
+                            )[1:]
+
+                            future_df = pd.DataFrame({
+
+                                "Date":
+                                    future_dates,
+
+                                "Forecast":
+                                    future_forecast
+                            })
+
+                            fig = px.line(
+
+                                future_df,
+
+                                x="Date",
+
+                                y="Forecast",
+
+                                markers=True,
+
+                                title=
+                                "Future Accident Forecast"
+                            )
+
+                            fig.update_layout(
+                                **PLOTLY_LAYOUT
+                            )
+
+                            st.plotly_chart(
+                                fig,
+                                use_container_width=True
+                            )
+
+                            st.dataframe(
+                                future_df,
+                                use_container_width=True
+                            )
+
+                            # ---------------------------------
+                            # FORECAST DOWNLOAD
+                            # ---------------------------------
+
+                            csv = (
+                                future_df
+                                .to_csv(
+                                    index=False
+                                )
+                                .encode(
+                                    "utf-8"
+                                )
+                            )
+
+                            st.download_button(
+
+                                label=
+                                "📥 Download Forecast",
+
+                                data=csv,
+
+                                file_name=
+                                "future_forecast.csv",
+
+                                mime=
+                                "text/csv"
+                            )
+
+                            st.session_state[
+                                "forecast_df"
+                            ] = future_df
 
                         except Exception as e:
-                            st.markdown(f'<div class="alert-danger">❌ SARIMA failed: {e}</div>', unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════
-    # TAB 7: MODEL COMPARISON
-    # ══════════════════════════════════════════════
-    with tabs[6]:
-        st.markdown("""
-        <div class="section-header">
-          <div class="section-icon">🏆</div>
-          <p class="section-title">MODEL COMPARISON & RECOMMENDATION</p>
-        </div>
-        """, unsafe_allow_html=True)
+                            st.error(
+                                f"SARIMA Error: {str(e)}"
+                            )
+```
 
-        st.markdown("""
-        <div class="alert-info">
-        This tab helps you pick the <b>best model</b> for your project by comparing metrics that actually matter:
-        Cross-validation scores (generalisability), train vs test gap (overfitting), and interpretability.
-        </div>
-        """, unsafe_allow_html=True)
-
-        if 'reg_results' in st.session_state:
-            st.markdown("### Regression Results")
-            st.dataframe(st.session_state['reg_results'], use_container_width=True)
-
-            # Radar chart
-            reg_df = st.session_state['reg_results'].copy()
-            reg_df = reg_df[reg_df['CV R2 (mean)'] != 'N/A'].copy()
-            if not reg_df.empty:
-                reg_df['Test R2'] = pd.to_numeric(reg_df['Test R2'], errors='coerce')
-                reg_df['CV R2 (mean)'] = pd.to_numeric(reg_df['CV R2 (mean)'], errors='coerce')
-                reg_df['Gap'] = (reg_df['Test R2'] - reg_df['CV R2 (mean)']).abs()
-                reg_df['Score'] = reg_df['CV R2 (mean)'] * 0.6 + (1 - reg_df['Gap']) * 0.4
-                reg_df = reg_df.sort_values('Score', ascending=False)
-
-                fig = go.Figure()
-                for i, (_, row) in enumerate(reg_df.iterrows()):
-                    fig.add_trace(go.Bar(
-                        name=row['Model'],
-                        x=['CV R2','Test R2','Generalisation Score'],
-                        y=[row['CV R2 (mean)'], row['Test R2'], row['Score']],
-                        marker_color=COLOR_SEQ[i % len(COLOR_SEQ)]
-                    ))
-                fig.update_layout(barmode='group', title='Multi-metric Model Comparison',
-                                  **PLOTLY_LAYOUT)
-                st.plotly_chart(fig, use_container_width=True)
-
-                best = reg_df.iloc[0]
-                st.markdown(f"""
-                <div class="alert-success">
-                🏆 <b>Recommended Model: {best['Model']}</b><br>
-                Generalisation Score: {best['Score']:.4f} | CV R2: {best['CV R2 (mean)']} | Test R2: {best['Test R2']}
-                <br><br>This model has the best balance of test performance and cross-validation stability.
-                </div>
-                """, unsafe_allow_html=True)
-
-else:
-    st.markdown("""
-    <div style="text-align:center; padding:4rem 2rem;">
-      <div style="font-size:4rem; margin-bottom:1rem;">🚦</div>
-      <h2 style="font-family:'Space Mono',monospace; color:#64748b;">No Dataset Loaded</h2>
-      <p style="color:#475569; max-width:400px; margin:0 auto 2rem;">
-        Upload a CSV file above to begin your traffic accident analysis.
-        The system will automatically detect columns and guide you through EDA, modelling, and forecasting.
-      </p>
-      <div style="background:#161920; border:1px solid #2a3044; border-radius:12px; padding:1.5rem; max-width:400px; margin:0 auto; text-align:left;">
-        <p style="font-family:'Space Mono',monospace; font-size:0.75rem; color:#64748b; margin:0 0 0.5rem;">EXPECTED COLUMNS (optional)</p>
-        <code style="color:#f97316; font-size:0.8rem;">crash_date, crash_hour, crash_day_of_week</code><br>
-        <code style="color:#3b82f6; font-size:0.8rem;">injuries_total, crash_type, ...</code>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
