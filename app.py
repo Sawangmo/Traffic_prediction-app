@@ -1290,28 +1290,6 @@ if uploaded_file:
                 </div>
                 """, unsafe_allow_html=True)
 
-        st.markdown("""
-        ### 📚 How to Choose the Best Model for Traffic Accident Prediction
-
-        | Criterion | Best Choice |
-        |---|---|
-        | **Interpretability needed** | Linear Regression, Decision Tree |
-        | **Best accuracy, tabular data** | Gradient Boosting / XGBoost |
-        | **Balanced accuracy + speed** | Random Forest |
-        | **Temporal/sequential patterns** | LSTM (Deep Learning) |
-        | **Forecasting future accident counts** | SARIMA (Time Series) |
-
-        ### 🚨 Why Was R2 Perfect?
-        Perfect R2 (≈1.0) is almost always a sign of a problem, not a success:
-        - **Target leakage**: A column in features directly encodes the target (e.g. injury_count in features when predicting injury_count)
-        - **ID columns**: Row index or crash ID accidentally included as a feature
-        - **Post-event features**: Information recorded after the accident (e.g. "report filed = yes")
-        - **Data too small**: Only ~100 rows, model memorises training data
-        - **Same-set evaluation**: Metrics computed on training data, not a hold-out set
-
-        Use the **Leakage Detector** in the Features tab and always compare **Test R2** vs **CV R2**.
-        """)
-
 else:
     st.markdown("""
     <div style="text-align:center; padding:4rem 2rem;">
